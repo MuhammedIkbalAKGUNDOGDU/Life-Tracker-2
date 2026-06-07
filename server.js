@@ -415,6 +415,341 @@ app.delete('/api/goals/:id', async (req, res) => {
   }
 });
 
+
+// === HABITS (ALIŞKANLIKLAR) API ENDPOINTS ===
+
+// STREAK CALCULATOR HELPER
+async function updateHabitStreaks(habitId) {
+  try {
+    // Get habit config
+    const getHabit = await pool.query('SELECT frequency, custom_days, target_count FROM habits WHERE id = $1', [habitId]);
+    if (getHabit.rows.length === 0) return;
+    const { frequency, custom_days, target_count } = getHabit.rows[0];
+
+    // Get completed logs (where count >= target_count)
+    const logsQuery = `
+      SELECT log_date::text FROM habit_logs 
+      WHERE habit_id = $1 AND count >= $2 
+      ORDER BY log_date DESC;
+    `;
+    const { rows: logs } = await pool.query(logsQuery, [habitId, target_count]);
+    const completedDates = new Set(logs.map(r => r.log_date));
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+
+    if (completedDates.size > 0) {
+      const formatDate = (date) => date.toISOString().split('T')[0];
+
+      // Helper to check if habit is required on a given day
+      const isRequiredDay = (dateStr) => {
+        if (frequency === 'daily') return true;
+        if (frequency === 'custom') {
+          const date = new Date(dateStr);
+          let dayOfWeek = date.getDay(); 
+          if (dayOfWeek === 0) dayOfWeek = 7; // Sunday maps to 7
+          return (custom_days || []).includes(dayOfWeek);
+        }
+        return true;
+      };
+
+      // 1. Calculate Current Streak
+      const today = new Date();
+      let checkDate = new Date(today);
+      checkDate.setHours(0,0,0,0);
+      
+      let streakBroken = false;
+      let consecutiveDays = 0;
+      let daysChecked = 0;
+      
+      const todayStr = formatDate(checkDate);
+      const isTodayRequired = isRequiredDay(todayStr);
+      const isTodayCompleted = completedDates.has(todayStr);
+
+      let startOffset = 0;
+      if (isTodayRequired && !isTodayCompleted) {
+        // Check if yesterday was completed or not required
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = formatDate(yesterday);
+        
+        if (completedDates.has(yesterdayStr)) {
+          startOffset = 1;
+        } else if (!isRequiredDay(yesterdayStr)) {
+          // If yesterday wasn't required, walk back to find the last required day
+          let tempCheck = new Date(yesterday);
+          let foundRequired = false;
+          let tempChecked = 0;
+          while (!foundRequired && tempChecked < 7) {
+            tempCheck.setDate(tempCheck.getDate() - 1);
+            const tempStr = formatDate(tempCheck);
+            if (isRequiredDay(tempStr)) {
+              foundRequired = true;
+              if (completedDates.has(tempStr)) {
+                startOffset = (today - tempCheck) / (1000 * 60 * 60 * 24);
+              } else {
+                streakBroken = true;
+              }
+            }
+            tempChecked++;
+          }
+          if (!foundRequired) streakBroken = true;
+        } else {
+          streakBroken = true;
+        }
+      }
+
+      checkDate.setDate(checkDate.getDate() - Math.floor(startOffset));
+
+      while (!streakBroken && daysChecked < 365) {
+        const dateStr = formatDate(checkDate);
+        if (isRequiredDay(dateStr)) {
+          if (completedDates.has(dateStr)) {
+            consecutiveDays++;
+          } else {
+            streakBroken = true;
+          }
+        }
+        checkDate.setDate(checkDate.getDate() - 1);
+        daysChecked++;
+      }
+      currentStreak = consecutiveDays;
+
+      // 2. Calculate Longest Streak
+      const sortedDates = Array.from(completedDates).sort();
+      let maxStreak = 0;
+      let tempStreak = 0;
+      let lastDate = null;
+
+      for (let i = 0; i < sortedDates.length; i++) {
+        const dStr = sortedDates[i];
+        if (lastDate === null) {
+          tempStreak = 1;
+        } else {
+          const prevDate = new Date(lastDate);
+          const currDate = new Date(dStr);
+          
+          let temp = new Date(prevDate);
+          temp.setDate(temp.getDate() + 1);
+          let missedRequiredDay = false;
+          while (temp < currDate) {
+            const tempStr = formatDate(temp);
+            if (isRequiredDay(tempStr)) {
+              missedRequiredDay = true;
+              break;
+            }
+            temp.setDate(temp.getDate() + 1);
+          }
+
+          if (!missedRequiredDay) {
+            tempStreak++;
+          } else {
+            tempStreak = 1;
+          }
+        }
+        maxStreak = Math.max(maxStreak, tempStreak);
+        lastDate = dStr;
+      }
+      longestStreak = maxStreak;
+    }
+
+    // Save Calculated Streaks
+    await pool.query(
+      'UPDATE habits SET streak_current = $1, streak_longest = $2 WHERE id = $3',
+      [currentStreak, longestStreak, habitId]
+    );
+  } catch (err) {
+    console.error('Error updating streaks for habit:', habitId, err.message);
+  }
+}
+
+// 1. GET ALL HABITS (with nested logs)
+app.get('/api/habits', async (req, res) => {
+  try {
+    const query = `
+      SELECT h.*, 
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT('id', l.id, 'log_date', l.log_date::text, 'count', l.count) ORDER BY l.log_date DESC
+          ) FILTER (WHERE l.id IS NOT NULL),
+          '[]'
+        ) AS logs
+      FROM habits h
+      LEFT JOIN habit_logs l ON h.id = l.habit_id AND l.log_date >= CURRENT_DATE - INTERVAL '35 days'
+      GROUP BY h.id
+      ORDER BY h.sort_order ASC, h.created_at DESC;
+    `;
+    const { rows } = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving habits' });
+  }
+});
+
+// 2. CREATE A NEW HABIT
+app.post('/api/habits', async (req, res) => {
+  const { title, description, category, frequency, custom_days, target_count } = req.body;
+  try {
+    const query = `
+      INSERT INTO habits (title, description, category, frequency, custom_days, target_count)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+    `;
+    const values = [
+      title,
+      description || '',
+      category || 'general',
+      frequency || 'daily',
+      custom_days || [],
+      parseInt(target_count) || 1
+    ];
+    const { rows } = await pool.query(query, values);
+    
+    const newHabit = {
+      ...rows[0],
+      logs: []
+    };
+    res.status(201).json(newHabit);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating habit' });
+  }
+});
+
+// 3. REORDER HABITS
+app.put('/api/habits/reorder', async (req, res) => {
+  const { reorderedHabits } = req.body;
+  if (!Array.isArray(reorderedHabits)) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const habit of reorderedHabits) {
+      await client.query('UPDATE habits SET sort_order = $1 WHERE id = $2', [habit.sort_order, habit.id]);
+    }
+    await client.query('COMMIT');
+    res.json({ message: 'Habits reordered successfully' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating habit orders' });
+  } finally {
+    client.release();
+  }
+});
+
+// 4. LOG/TOGGLE HABIT FOR A SPECIFIC DATE
+app.post('/api/habits/:id/log', async (req, res) => {
+  const { id } = req.params;
+  const { log_date, count } = req.body;
+  try {
+    if (parseInt(count) <= 0) {
+      await pool.query('DELETE FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [id, log_date]);
+    } else {
+      const query = `
+        INSERT INTO habit_logs (habit_id, log_date, count)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (habit_id, log_date)
+        DO UPDATE SET count = $3
+        RETURNING *;
+      `;
+      await pool.query(query, [id, log_date, count]);
+    }
+    
+    // Recalculate Streaks
+    await updateHabitStreaks(id);
+    
+    // Return complete habit details
+    const fullQuery = `
+      SELECT h.*, 
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT('id', l.id, 'log_date', l.log_date::text, 'count', l.count) ORDER BY l.log_date DESC
+          ) FILTER (WHERE l.id IS NOT NULL),
+          '[]'
+        ) AS logs
+      FROM habits h
+      LEFT JOIN habit_logs l ON h.id = l.habit_id AND l.log_date >= CURRENT_DATE - INTERVAL '35 days'
+      WHERE h.id = $1
+      GROUP BY h.id;
+    `;
+    const { rows } = await pool.query(fullQuery, [id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error logging habit' });
+  }
+});
+
+// 5. UPDATE HABIT DETAILS
+app.put('/api/habits/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, description, category, frequency, custom_days, target_count } = req.body;
+  try {
+    const query = `
+      UPDATE habits
+      SET title = $1, description = $2, category = $3, frequency = $4, custom_days = $5, target_count = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+      RETURNING *;
+    `;
+    const values = [
+      title,
+      description || '',
+      category || 'general',
+      frequency || 'daily',
+      custom_days || [],
+      parseInt(target_count) || 1,
+      id
+    ];
+    const { rows } = await pool.query(query, values);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+    
+    // Recalculate streaks in case target count or frequency changed
+    await updateHabitStreaks(id);
+    
+    // Return complete habit details
+    const fullQuery = `
+      SELECT h.*, 
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT('id', l.id, 'log_date', l.log_date::text, 'count', l.count) ORDER BY l.log_date DESC
+          ) FILTER (WHERE l.id IS NOT NULL),
+          '[]'
+        ) AS logs
+      FROM habits h
+      LEFT JOIN habit_logs l ON h.id = l.habit_id AND l.log_date >= CURRENT_DATE - INTERVAL '35 days'
+      WHERE h.id = $1
+      GROUP BY h.id;
+    `;
+    const { rows: result } = await pool.query(fullQuery, [id]);
+    res.json(result[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating habit' });
+  }
+});
+
+// 6. DELETE A HABIT
+app.delete('/api/habits/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM habits WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Habit not found' });
+    }
+    res.json({ message: 'Habit deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting habit' });
+  }
+});
+
 // Serve the frontend app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));

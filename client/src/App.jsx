@@ -5,6 +5,10 @@ import ProjectModal from './components/ProjectModal';
 import GoalCard from './components/GoalCard';
 import GoalModal from './components/GoalModal';
 import GoalKPIs from './components/GoalKPIs';
+import HabitCard from './components/HabitCard';
+import HabitMatrix from './components/HabitMatrix';
+import HabitModal from './components/HabitModal';
+import HabitKPIs from './components/HabitKPIs';
 import { 
   Activity, 
   FolderKanban, 
@@ -40,13 +44,21 @@ export default function App() {
   // Sidebar tabs drag-and-drop state
   const [tabs, setTabs] = useState(() => {
     const savedTabs = localStorage.getItem('sidebar_tabs_order');
-    if (savedTabs) {
-      try { return JSON.parse(savedTabs); } catch(e) { }
-    }
-    return [
+    const defaultTabs = [
       { id: 'projects', label: 'Projeler', icon: 'projects' },
-      { id: 'goals', label: 'Hedefler', icon: 'goals' }
+      { id: 'goals', label: 'Hedefler', icon: 'goals' },
+      { id: 'habits', label: 'Alışkanlıklar', icon: 'habits' }
     ];
+    if (savedTabs) {
+      try { 
+        const parsed = JSON.parse(savedTabs); 
+        if (!parsed.some(t => t.id === 'habits')) {
+          parsed.push({ id: 'habits', label: 'Alışkanlıklar', icon: 'habits' });
+        }
+        return parsed; 
+      } catch(e) { }
+    }
+    return defaultTabs;
   });
 
   // Project Drag and Drop State
@@ -72,6 +84,16 @@ export default function App() {
   const [draggedGoalIdx, setDraggedGoalIdx] = useState(null);
   const [dragOverGoalIdx, setDragOverGoalIdx] = useState(null);
 
+  // Habits States
+  const [habits, setHabits] = useState([]);
+  const [habitsLoading, setHabitsLoading] = useState(true);
+  const [habitsError, setHabitsError] = useState(false);
+  const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
+  const [selectedHabit, setSelectedHabit] = useState(null);
+  const [habitsViewMode, setHabitsViewMode] = useState(() => localStorage.getItem('habits_view_mode') || 'weekly');
+  const [draggedHabitIdx, setDraggedHabitIdx] = useState(null);
+  const [dragOverHabitIdx, setDragOverHabitIdx] = useState(null);
+
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
 
@@ -80,8 +102,13 @@ export default function App() {
   }, [goalsViewMode]);
 
   useEffect(() => {
+    localStorage.setItem('habits_view_mode', habitsViewMode);
+  }, [habitsViewMode]);
+
+  useEffect(() => {
     fetchProjects();
     fetchGoals();
+    fetchHabits();
   }, []);
 
   useEffect(() => {
@@ -597,10 +624,173 @@ export default function App() {
     setDragOverGoalIdx(null);
   };
 
+  // === HABITS CRUD & ACTION HANDLERS ===
+  
+  // GET: Fetch all habits
+  const fetchHabits = async () => {
+    setHabitsLoading(true);
+    setHabitsError(false);
+    try {
+      const res = await fetch('/api/habits');
+      if (!res.ok) throw new Error('Alışkanlıklar yüklenirken bir sorun oluştu.');
+      const data = await res.json();
+      setHabits(data);
+    } catch (err) {
+      console.error(err);
+      setHabitsError(true);
+      showToast('Bağlantı hatası: Alışkanlıklar çekilemedi.', 'error');
+    } finally {
+      setHabitsLoading(false);
+    }
+  };
+
+  // POST/PUT: Save Habit (Create new or Update metadata)
+  const saveHabit = async (habitData) => {
+    try {
+      let res;
+      if (habitData.id) {
+        // Edit existing habit
+        res = await fetch(`/api/habits/${habitData.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(habitData)
+        });
+      } else {
+        // Create new habit
+        res = await fetch('/api/habits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...habitData, sort_order: habits.length })
+        });
+      }
+
+      if (!res.ok) throw new Error('Alışkanlık kaydedilirken hata oluştu.');
+      
+      const savedHabit = await res.json();
+      
+      if (habitData.id) {
+        setHabits(prev => prev.map(h => h.id === savedHabit.id ? savedHabit : h));
+        showToast('Alışkanlık başarıyla güncellendi.', 'success');
+      } else {
+        setHabits(prev => [...prev, savedHabit]);
+        showToast('Yeni alışkanlık başarıyla eklendi.', 'success');
+      }
+      
+      setIsHabitModalOpen(false);
+      setSelectedHabit(null);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // DELETE: Delete a Habit
+  const deleteHabit = async (habitId) => {
+    const habit = habits.find(h => h.id === habitId);
+    if (!habit) return;
+    
+    if (window.confirm(`"${habit.title}" alışkanlığını silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) {
+      try {
+        const res = await fetch(`/api/habits/${habitId}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Alışkanlık silinemedi.');
+        
+        setHabits(prev => prev.filter(h => h.id !== habitId));
+        showToast('Alışkanlık başarıyla silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
+  // POST: Log/Increment completion count for a date
+  const logHabit = async (habitId, logDate, count) => {
+    try {
+      const res = await fetch(`/api/habits/${habitId}/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ log_date: logDate, count })
+      });
+      if (!res.ok) throw new Error('Alışkanlık kaydı güncellenemedi.');
+      
+      const updatedHabit = await res.json();
+      setHabits(prev => prev.map(h => h.id === updatedHabit.id ? updatedHabit : h));
+      
+      const targetCount = updatedHabit.target_count || 1;
+      if (count >= targetCount) {
+        showToast('Tebrikler! Alışkanlık hedefine ulaşıldı.', 'success');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleEditHabitClick = (habit) => {
+    setSelectedHabit(habit);
+    setIsHabitModalOpen(true);
+  };
+
+  const handleCreateHabitClick = () => {
+    setSelectedHabit(null);
+    setIsHabitModalOpen(true);
+  };
+
+  // --- HABIT DRAG AND DROP HANDLERS ---
+  const handleHabitDragStart = (e, index) => {
+    setDraggedHabitIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleHabitDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedHabitIdx === null || draggedHabitIdx === index) return;
+    setDragOverHabitIdx(index);
+  };
+
+  const handleHabitDrop = async (e, index) => {
+    e.preventDefault();
+    if (draggedHabitIdx === null || draggedHabitIdx === index) return;
+
+    const reordered = [...habits];
+    const draggedItem = reordered[draggedHabitIdx];
+    
+    reordered.splice(draggedHabitIdx, 1);
+    reordered.splice(index, 0, draggedItem);
+
+    const updatedWithOrder = reordered.map((item, idx) => ({
+      ...item,
+      sort_order: idx
+    }));
+
+    setHabits(updatedWithOrder);
+    setDraggedHabitIdx(null);
+    setDragOverHabitIdx(null);
+
+    try {
+      const payload = updatedWithOrder.map(h => ({ id: h.id, sort_order: h.sort_order }));
+      const res = await fetch('/api/habits/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reorderedHabits: payload })
+      });
+      if (!res.ok) throw new Error('Sıralama veritabanına kaydedilemedi.');
+      showToast('Alışkanlık sıralaması güncellendi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+      fetchHabits();
+    }
+  };
+
+  const handleHabitDragEnd = () => {
+    setDraggedHabitIdx(null);
+    setDragOverHabitIdx(null);
+  };
+
   const renderTabIcon = (iconName) => {
     switch (iconName) {
       case 'projects': return <FolderKanban />;
       case 'goals': return <Target />;
+      case 'habits': return <Flame />;
       default: return <Info />;
     }
   };
@@ -806,7 +996,7 @@ export default function App() {
               )}
             </section>
           </>
-        ) : (
+        ) : activeTab === 'goals' ? (
           <>
             {/* Dashboard Stat Cards */}
             <GoalKPIs goals={goals} />
@@ -914,6 +1104,89 @@ export default function App() {
               )}
             </section>
           </>
+        ) : (
+          /* Habits View */
+          <>
+            {/* Dashboard Stat Cards */}
+            <HabitKPIs habits={habits} />
+
+            {/* Action Bar (Filters & Adding Button) */}
+            <section className="action-bar-section">
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div className="filters glass-card" style={{ display: 'flex', padding: '4px', gap: '4px' }}>
+                  <button 
+                    className={`filter-btn ${habitsViewMode === 'weekly' ? 'active' : ''}`}
+                    onClick={() => setHabitsViewMode('weekly')}
+                    title="Haftalık Görünüm"
+                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
+                  >
+                    Haftalık Liste
+                  </button>
+                  <button 
+                    className={`filter-btn ${habitsViewMode === 'monthly' ? 'active' : ''}`}
+                    onClick={() => setHabitsViewMode('monthly')}
+                    title="Aylık Görünüm"
+                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
+                  >
+                    Aylık Matris
+                  </button>
+                </div>
+              </div>
+              
+              <button className="btn btn-primary" onClick={handleCreateHabitClick}>
+                <Plus /> Yeni Alışkanlık Ekle
+              </button>
+            </section>
+
+            {/* Habits Display Grid / List / Matrix */}
+            <section className="projects-grid-section">
+              {habitsLoading ? (
+                <div className="loading-state">
+                  <div className="spinner"></div>
+                  <p>Alışkanlıklar yükleniyor...</p>
+                </div>
+              ) : habitsError ? (
+                <div className="empty-state">
+                  <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
+                  <h3>Bağlantı Hatası</h3>
+                  <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
+                  <button className="btn btn-secondary" onClick={fetchHabits}>
+                    <RefreshCw /> Tekrar Dene
+                  </button>
+                </div>
+              ) : habits.length === 0 ? (
+                <div className="empty-state">
+                  <Flame style={{ width: '56px', height: '56px' }} />
+                  <h3>Alışkanlık Bulunamadı</h3>
+                  <p>Henüz hiçbir alışkanlık oluşturmadınız.</p>
+                  <button className="btn btn-primary" onClick={handleCreateHabitClick}>
+                    <Plus /> İlk Alışkanlığı Ekle
+                  </button>
+                </div>
+              ) : habitsViewMode === 'monthly' ? (
+                <HabitMatrix habits={habits} onLogHabit={logHabit} />
+              ) : (
+                <div className="goals-list-container">
+                  {habits.map((habit, idx) => (
+                    <HabitCard 
+                      key={habit.id} 
+                      habit={habit} 
+                      index={idx}
+                      onEdit={handleEditHabitClick}
+                      onDelete={deleteHabit}
+                      onLogHabit={logHabit}
+                      onDragStart={handleHabitDragStart}
+                      onDragOver={handleHabitDragOver}
+                      onDrop={handleHabitDrop}
+                      onDragEnd={handleHabitDragEnd}
+                      draggedIndex={draggedHabitIdx}
+                      dragOverIndex={dragOverHabitIdx}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </main>
 
@@ -940,6 +1213,17 @@ export default function App() {
           setSelectedGoal(null);
         }}
         onSaveGoal={saveGoal}
+      />
+
+      {/* Habit Management Modal */}
+      <HabitModal
+        isOpen={isHabitModalOpen}
+        habit={selectedHabit}
+        onClose={() => {
+          setIsHabitModalOpen(false);
+          setSelectedHabit(null);
+        }}
+        onSaveHabit={saveHabit}
       />
 
       {/* Toast Notifications */}

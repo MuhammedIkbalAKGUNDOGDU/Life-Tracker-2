@@ -42,3 +42,30 @@ CREATE TABLE IF NOT EXISTS goals (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+
+-- Habits table
+CREATE TABLE IF NOT EXISTS habits (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
+    category VARCHAR(100) DEFAULT 'general', -- health, career, finance, education, social, general
+    frequency VARCHAR(50) DEFAULT 'daily', -- 'daily' or 'custom'
+    custom_days INTEGER[] DEFAULT '{}', -- e.g. [1, 3, 5] (1=Pazartesi, 7=Pazar)
+    target_count INTEGER DEFAULT 1 CHECK (target_count >= 1),
+    streak_current INTEGER DEFAULT 0,
+    streak_longest INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Habit completion logs
+CREATE TABLE IF NOT EXISTS habit_logs (
+    id SERIAL PRIMARY KEY,
+    habit_id INTEGER REFERENCES habits(id) ON DELETE CASCADE,
+    log_date DATE NOT NULL,
+    count INTEGER DEFAULT 1 CHECK (count >= 0),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(habit_id, log_date)
+);
+

@@ -1573,4 +1573,68 @@ select option {
   }
 }
 
+/* Habit Tracker Weekly Buttons */
+.habit-day-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+  transition: all var(--transition-speed) ease;
+}
+.habit-day-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--glass-border-hover);
+}
+.habit-day-btn.is-today {
+  border: 1.5px solid var(--primary) !important;
+}
+.habit-day-btn.completed {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+  color: #fff !important;
+  box-shadow: 0 0 8px var(--success-glow);
+}
+.habit-day-btn.not-required {
+  background: rgba(255, 255, 255, 0.01) !important;
+  border-color: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: default !important;
+  opacity: 0.3;
+}
+
+/* Light theme overrides */
+.light-theme .habit-day-btn {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.08);
+  color: var(--text-main);
+}
+.light-theme .habit-day-btn:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+.light-theme .habit-day-btn.completed {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+}
+.light-theme .habit-day-btn.not-required {
+  background: rgba(15, 23, 42, 0.01) !important;
+  border-color: transparent !important;
+  color: #94a3b8 !important;
+}
+
+/* Matrix Table Styling */
+.habit-matrix-row:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+.light-theme .habit-matrix-row:hover {
+  background: rgba(15, 23, 42, 0.02);
+}
+
 
