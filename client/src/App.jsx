@@ -27,7 +27,8 @@ import {
   Info,
   FolderOpen,
   LayoutGrid,
-  List
+  List,
+  Flame
 } from 'lucide-react';
 
 export default function App() {
