@@ -275,15 +275,15 @@ app.get('/api/goals', async (req, res) => {
 
 // 2. CREATE A NEW GOAL
 app.post('/api/goals', async (req, res) => {
-  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit } = req.body;
+  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, link_url } = req.body;
   try {
     const isCompleted = progress_type === 'metric' 
       ? (parseFloat(current_value) >= parseFloat(target_value)) 
       : false;
       
     const query = `
-      INSERT INTO goals (title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO goals (title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *;
     `;
     const values = [
@@ -296,7 +296,8 @@ app.post('/api/goals', async (req, res) => {
       parseFloat(current_value) || 0.00,
       parseFloat(target_value) || 1.00,
       unit || '',
-      isCompleted
+      isCompleted,
+      link_url || ''
     ];
     const { rows } = await pool.query(query, values);
     res.status(201).json(rows[0]);
@@ -364,7 +365,7 @@ app.put('/api/goals/:id/increment', async (req, res) => {
 // 5. UPDATE GOAL DETAILS
 app.put('/api/goals/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed } = req.body;
+  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url } = req.body;
   try {
     const getGoal = await pool.query('SELECT * FROM goals WHERE id = $1', [id]);
     if (getGoal.rows.length === 0) {
@@ -381,6 +382,7 @@ app.put('/api/goals/:id', async (req, res) => {
     const newCurrentValue = current_value !== undefined ? parseFloat(current_value) : parseFloat(currentGoal.current_value);
     const newTargetValue = target_value !== undefined ? parseFloat(target_value) : parseFloat(currentGoal.target_value);
     const newUnit = unit !== undefined ? unit : currentGoal.unit;
+    const newLink = link_url !== undefined ? link_url : currentGoal.link_url;
     
     const isCompleted = is_completed !== undefined 
       ? is_completed 
@@ -388,11 +390,11 @@ app.put('/api/goals/:id', async (req, res) => {
 
     const query = `
       UPDATE goals
-      SET title = $1, why_note = $2, category = $3, target_date = $4, priority = $5, progress_type = $6, current_value = $7, target_value = $8, unit = $9, is_completed = $10, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $11
+      SET title = $1, why_note = $2, category = $3, target_date = $4, priority = $5, progress_type = $6, current_value = $7, target_value = $8, unit = $9, is_completed = $10, link_url = $11, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $12
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [newTitle, newWhy, newCategory, newTargetDate, newPriority, newProgressType, newCurrentValue, newTargetValue, newUnit, isCompleted, id]);
+    const { rows } = await pool.query(query, [newTitle, newWhy, newCategory, newTargetDate, newPriority, newProgressType, newCurrentValue, newTargetValue, newUnit, isCompleted, newLink, id]);
     res.json(rows[0]);
   } catch (err) {
     console.error(err.message);

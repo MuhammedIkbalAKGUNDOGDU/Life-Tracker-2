@@ -14,6 +14,7 @@ export default function GoalModal({
   const [targetDate, setTargetDate] = useState('');
   const [priority, setPriority] = useState(3);
   const [progressType, setProgressType] = useState('boolean');
+  const [linkUrl, setLinkUrl] = useState('');
   
   // Metric properties
   const [currentValue, setCurrentValue] = useState(0);
@@ -36,6 +37,7 @@ export default function GoalModal({
       setTargetDate(goal.target_date ? goal.target_date.substring(0, 10) : '');
       setPriority(goal.priority || 3);
       setProgressType(goal.progress_type || 'boolean');
+      setLinkUrl(goal.link_url || '');
       setCurrentValue(parseFloat(goal.current_value) || 0);
       setTargetValue(parseFloat(goal.target_value) || 1);
       setUnit(goal.unit || '');
@@ -47,6 +49,7 @@ export default function GoalModal({
       setTargetDate('');
       setPriority(3);
       setProgressType('boolean');
+      setLinkUrl('');
       setCurrentValue(0);
       setTargetValue(1);
       setUnit('');
@@ -67,6 +70,7 @@ export default function GoalModal({
       target_date: targetDate || null,
       priority: parseInt(priority) || 3,
       progress_type: progressType,
+      link_url: linkUrl.trim(),
       current_value: progressType === 'metric' ? parseFloat(currentValue) || 0 : 0,
       target_value: progressType === 'metric' ? parseFloat(targetValue) || 1 : 1,
       unit: progressType === 'metric' ? unit.trim() : ''
@@ -166,6 +170,16 @@ export default function GoalModal({
                   onChange={(e) => setTargetDate(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="form-group">
+              <label>Hedef Detay Linki (URL)</label>
+              <input
+                type="text"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="Örn: https://example.com/detaylar..."
+              />
             </div>
 
             {progressType === 'metric' && (
