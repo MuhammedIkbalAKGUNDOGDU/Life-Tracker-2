@@ -260,10 +260,166 @@ app.delete('/api/tasks/:id', async (req, res) => {
   }
 });
 
+// === GOALS API ENDPOINTS ===
+
+// 1. GET ALL GOALS
+app.get('/api/goals', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM goals ORDER BY sort_order ASC, created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving goals' });
+  }
+});
+
+// 2. CREATE A NEW GOAL
+app.post('/api/goals', async (req, res) => {
+  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit } = req.body;
+  try {
+    const isCompleted = progress_type === 'metric' 
+      ? (parseFloat(current_value) >= parseFloat(target_value)) 
+      : false;
+      
+    const query = `
+      INSERT INTO goals (title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *;
+    `;
+    const values = [
+      title,
+      why_note || '',
+      category || 'general',
+      target_date || null,
+      parseInt(priority) || 3,
+      progress_type || 'boolean',
+      parseFloat(current_value) || 0.00,
+      parseFloat(target_value) || 1.00,
+      unit || '',
+      isCompleted
+    ];
+    const { rows } = await pool.query(query, values);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating goal' });
+  }
+});
+
+// 3. REORDER GOALS
+app.put('/api/goals/reorder', async (req, res) => {
+  const { reorderedGoals } = req.body;
+  if (!Array.isArray(reorderedGoals)) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const goal of reorderedGoals) {
+      await client.query('UPDATE goals SET sort_order = $1 WHERE id = $2', [goal.sort_order, goal.id]);
+    }
+    await client.query('COMMIT');
+    res.json({ message: 'Goals reordered successfully' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating goal orders' });
+  } finally {
+    client.release();
+  }
+});
+
+// 4. INCREMENT METRIC GOAL
+app.put('/api/goals/:id/increment', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const getGoal = await pool.query('SELECT * FROM goals WHERE id = $1', [id]);
+    if (getGoal.rows.length === 0) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+    
+    const goal = getGoal.rows[0];
+    if (goal.progress_type !== 'metric') {
+      return res.status(400).json({ error: 'Goal is not metric-based' });
+    }
+
+    const newCurrentValue = parseFloat(goal.current_value) + 1;
+    const isCompleted = newCurrentValue >= parseFloat(goal.target_value);
+
+    const query = `
+      UPDATE goals
+      SET current_value = $1, is_completed = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING *;
+    `;
+    const { rows } = await pool.query(query, [newCurrentValue, isCompleted, id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error incrementing goal' });
+  }
+});
+
+// 5. UPDATE GOAL DETAILS
+app.put('/api/goals/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed } = req.body;
+  try {
+    const getGoal = await pool.query('SELECT * FROM goals WHERE id = $1', [id]);
+    if (getGoal.rows.length === 0) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+    
+    const currentGoal = getGoal.rows[0];
+    const newTitle = title !== undefined ? title : currentGoal.title;
+    const newWhy = why_note !== undefined ? why_note : currentGoal.why_note;
+    const newCategory = category !== undefined ? category : currentGoal.category;
+    const newTargetDate = target_date !== undefined ? target_date : currentGoal.target_date;
+    const newPriority = priority !== undefined ? parseInt(priority) : currentGoal.priority;
+    const newProgressType = progress_type !== undefined ? progress_type : currentGoal.progress_type;
+    const newCurrentValue = current_value !== undefined ? parseFloat(current_value) : parseFloat(currentGoal.current_value);
+    const newTargetValue = target_value !== undefined ? parseFloat(target_value) : parseFloat(currentGoal.target_value);
+    const newUnit = unit !== undefined ? unit : currentGoal.unit;
+    
+    const isCompleted = is_completed !== undefined 
+      ? is_completed 
+      : (newProgressType === 'metric' ? (newCurrentValue >= newTargetValue) : currentGoal.is_completed);
+
+    const query = `
+      UPDATE goals
+      SET title = $1, why_note = $2, category = $3, target_date = $4, priority = $5, progress_type = $6, current_value = $7, target_value = $8, unit = $9, is_completed = $10, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $11
+      RETURNING *;
+    `;
+    const { rows } = await pool.query(query, [newTitle, newWhy, newCategory, newTargetDate, newPriority, newProgressType, newCurrentValue, newTargetValue, newUnit, isCompleted, id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating goal' });
+  }
+});
+
+// 6. DELETE A GOAL
+app.delete('/api/goals/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM goals WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+    res.json({ message: 'Goal deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting goal' });
+  }
+});
+
 // Serve the frontend app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
 });
+
 
 // Start Server
 app.listen(PORT, () => {

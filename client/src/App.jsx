@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import KPIStats from './components/KPIStats';
 import ProjectCard from './components/ProjectCard';
 import ProjectModal from './components/ProjectModal';
+import GoalCard from './components/GoalCard';
+import GoalModal from './components/GoalModal';
+import GoalKPIs from './components/GoalKPIs';
 import { 
   Activity, 
   FolderKanban, 
@@ -18,7 +21,9 @@ import {
   RefreshCw,
   CheckCircle,
   Info,
-  FolderOpen
+  FolderOpen,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 
 export default function App() {
@@ -56,11 +61,27 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
 
+  // Goals States
+  const [goals, setGoals] = useState([]);
+  const [goalsLoading, setGoalsLoading] = useState(true);
+  const [goalsError, setGoalsError] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState(null);
+  const [hideCompletedGoals, setHideCompletedGoals] = useState(false);
+  const [goalsViewMode, setGoalsViewMode] = useState(() => localStorage.getItem('goals_view_mode') || 'grid');
+  const [draggedGoalIdx, setDraggedGoalIdx] = useState(null);
+  const [dragOverGoalIdx, setDragOverGoalIdx] = useState(null);
+
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
+    localStorage.setItem('goals_view_mode', goalsViewMode);
+  }, [goalsViewMode]);
+
+  useEffect(() => {
     fetchProjects();
+    fetchGoals();
   }, []);
 
   useEffect(() => {
@@ -388,6 +409,194 @@ export default function App() {
     setDragOverTabIdx(null);
   };
 
+  // === GOALS CRUD & ACTION HANDLERS ===
+  
+  // GET: Fetch all goals
+  const fetchGoals = async () => {
+    setGoalsLoading(true);
+    setGoalsError(false);
+    try {
+      const res = await fetch('/api/goals');
+      if (!res.ok) throw new Error('Hedefler yüklenirken bir sorun oluştu.');
+      const data = await res.json();
+      setGoals(data);
+    } catch (err) {
+      console.error(err);
+      setGoalsError(true);
+      showToast('Bağlantı hatası: Hedefler çekilemedi.', 'error');
+    } finally {
+      setGoalsLoading(false);
+    }
+  };
+
+  // POST/PUT: Save Goal (Create new or Update metadata)
+  const saveGoal = async (goalData) => {
+    try {
+      let res;
+      if (goalData.id) {
+        // Edit existing goal
+        res = await fetch(`/api/goals/${goalData.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(goalData)
+        });
+      } else {
+        // Create new goal
+        res = await fetch('/api/goals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...goalData, sort_order: goals.length })
+        });
+      }
+
+      if (!res.ok) throw new Error('Hedef kaydedilirken hata oluştu.');
+      
+      const savedGoal = await res.json();
+      
+      if (goalData.id) {
+        setGoals(prev => prev.map(g => g.id === savedGoal.id ? savedGoal : g));
+        showToast('Hedef başarıyla güncellendi.', 'success');
+      } else {
+        setGoals(prev => [...prev, savedGoal]);
+        showToast('Yeni hedef başarıyla eklendi.', 'success');
+      }
+      
+      setIsGoalModalOpen(false);
+      setSelectedGoal(null);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // DELETE: Delete a Goal
+  const deleteGoal = async (goalId) => {
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    
+    if (window.confirm(`"${goal.title}" hedefini silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) {
+      try {
+        const res = await fetch(`/api/goals/${goalId}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Hedef silinemedi.');
+        
+        setGoals(prev => prev.filter(g => g.id !== goalId));
+        showToast('Hedef başarıyla silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
+  // PUT: Toggle Goal Complete Status (primarily for boolean yes/no type)
+  const toggleGoalStatus = async (goal) => {
+    const newCompleted = !goal.is_completed;
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_completed: newCompleted })
+      });
+      if (!res.ok) throw new Error('Hedef durumu güncellenemedi.');
+      
+      const updatedGoal = await res.json();
+      setGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+      
+      if (newCompleted) {
+        showToast('Tebrikler! Hedefe ulaştınız.', 'success');
+      } else {
+        showToast('Hedef bekleme durumuna alındı.', 'info');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // PUT: Increment Metric Goal Progress (+1 button)
+  const incrementGoalProgress = async (goalId) => {
+    try {
+      const res = await fetch(`/api/goals/${goalId}/increment`, {
+        method: 'PUT'
+      });
+      if (!res.ok) throw new Error('Hedef ilerlemesi artırılamadı.');
+      
+      const updatedGoal = await res.json();
+      setGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+      
+      if (updatedGoal.is_completed) {
+        showToast('Tebrikler! Hedef hedeflenen değere ulaştı ve tamamlandı.', 'success');
+      } else {
+        showToast('İlerleme kaydedildi.', 'success');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleEditGoalClick = (goal) => {
+    setSelectedGoal(goal);
+    setIsGoalModalOpen(true);
+  };
+
+  const handleCreateGoalClick = () => {
+    setSelectedGoal(null);
+    setIsGoalModalOpen(true);
+  };
+
+  // --- GOAL DRAG AND DROP HANDLERS ---
+  const handleGoalDragStart = (e, index) => {
+    setDraggedGoalIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleGoalDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedGoalIdx === null || draggedGoalIdx === index) return;
+    setDragOverGoalIdx(index);
+  };
+
+  const handleGoalDrop = async (e, index) => {
+    e.preventDefault();
+    if (draggedGoalIdx === null || draggedGoalIdx === index) return;
+
+    const reordered = [...goals];
+    const draggedItem = reordered[draggedGoalIdx];
+    
+    // Remove dragged item and insert at target index
+    reordered.splice(draggedGoalIdx, 1);
+    reordered.splice(index, 0, draggedItem);
+
+    // Reassign sort orders
+    const updatedWithOrder = reordered.map((item, idx) => ({
+      ...item,
+      sort_order: idx
+    }));
+
+    setGoals(updatedWithOrder);
+    setDraggedGoalIdx(null);
+    setDragOverGoalIdx(null);
+
+    // Call API to persist reordering in PostgreSQL DB
+    try {
+      const payload = updatedWithOrder.map(g => ({ id: g.id, sort_order: g.sort_order }));
+      const res = await fetch('/api/goals/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reorderedGoals: payload })
+      });
+      if (!res.ok) throw new Error('Hedef sıralaması veritabanına kaydedilemedi.');
+      showToast('Hedef sıralaması güncellendi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+      fetchGoals();
+    }
+  };
+
+  const handleGoalDragEnd = () => {
+    setDraggedGoalIdx(null);
+    setDragOverGoalIdx(null);
+  };
+
   const renderTabIcon = (iconName) => {
     switch (iconName) {
       case 'projects': return <FolderKanban />;
@@ -598,17 +807,113 @@ export default function App() {
             </section>
           </>
         ) : (
-          /* Hedefler Tab Placeholder Page */
-          <div className="tab-placeholder-page glass-card">
-            <Target />
-            <h2>Hedefler Modülü</h2>
-            <p>
-              Kişisel hedeflerinizi, yıllık kararlarınızı ve gelişim planlarınızı bu alandan takip edebileceksiniz. Çok yakında burada!
-            </p>
-            <button className="btn btn-primary" onClick={() => setActiveTab('projects')}>
-              Projeler Modülüne Dön
-            </button>
-          </div>
+          <>
+            {/* Dashboard Stat Cards */}
+            <GoalKPIs goals={goals} />
+
+            {/* Action Bar (Filters & Adding Button) */}
+            <section className="action-bar-section">
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div className="filters glass-card" style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-main)', fontSize: '14px', fontWeight: '500' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={hideCompletedGoals} 
+                      onChange={(e) => setHideCompletedGoals(e.target.checked)}
+                      style={{ 
+                        cursor: 'pointer',
+                        width: '16px',
+                        height: '16px',
+                        accentColor: 'var(--primary)'
+                      }} 
+                    />
+                    Tamamlananları Gizle
+                  </label>
+                </div>
+
+                <div className="filters glass-card" style={{ display: 'flex', padding: '4px', gap: '4px' }}>
+                  <button 
+                    className={`filter-btn ${goalsViewMode === 'grid' ? 'active' : ''}`}
+                    onClick={() => setGoalsViewMode('grid')}
+                    title="Grid Görünümü"
+                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
+                  >
+                    <LayoutGrid size={14} /> Grid
+                  </button>
+                  <button 
+                    className={`filter-btn ${goalsViewMode === 'list' ? 'active' : ''}`}
+                    onClick={() => setGoalsViewMode('list')}
+                    title="Liste Görünümü"
+                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
+                  >
+                    <List size={14} /> Liste
+                  </button>
+                </div>
+              </div>
+              
+              <button className="btn btn-primary" onClick={handleCreateGoalClick}>
+                <Plus /> Yeni Hedef Ekle
+              </button>
+            </section>
+
+            {/* Goals Display Grid */}
+            <section className="projects-grid-section">
+              {goalsLoading ? (
+                <div className="loading-state">
+                  <div className="spinner"></div>
+                  <p>Hedefler yükleniyor...</p>
+                </div>
+              ) : goalsError ? (
+                <div className="empty-state">
+                  <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
+                  <h3>Bağlantı Hatası</h3>
+                  <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
+                  <button className="btn btn-secondary" onClick={fetchGoals}>
+                    <RefreshCw /> Tekrar Dene
+                  </button>
+                </div>
+              ) : (hideCompletedGoals ? goals.filter(g => !(g.is_completed || (g.progress_type === 'metric' && parseFloat(g.current_value) >= parseFloat(g.target_value)))) : goals).length === 0 ? (
+                <div className="empty-state">
+                  <Target style={{ width: '56px', height: '56px' }} />
+                  <h3>Hedef Bulunamadı</h3>
+                  <p>
+                    {hideCompletedGoals 
+                      ? 'Tamamlanmamış bir hedefiniz bulunmamaktadır.'
+                      : 'Henüz hiçbir hedef oluşturmadınız.'}
+                  </p>
+                  {!hideCompletedGoals && (
+                    <button className="btn btn-primary" onClick={handleCreateGoalClick}>
+                      <Plus /> İlk Hedefi Ekle
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className={goalsViewMode === 'list' ? 'goals-list-container' : 'projects-grid'}>
+                  {(hideCompletedGoals 
+                    ? goals.filter(g => !(g.is_completed || (g.progress_type === 'metric' && parseFloat(g.current_value) >= parseFloat(g.target_value)))) 
+                    : goals
+                  ).map((goal, idx) => (
+                    <GoalCard 
+                      key={goal.id} 
+                      goal={goal} 
+                      index={idx}
+                      onEdit={handleEditGoalClick}
+                      onDelete={deleteGoal}
+                      onToggleGoal={toggleGoalStatus}
+                      onIncrement={incrementGoalProgress}
+                      onDragStart={handleGoalDragStart}
+                      onDragOver={handleGoalDragOver}
+                      onDrop={handleGoalDrop}
+                      onDragEnd={handleGoalDragEnd}
+                      draggedIndex={draggedGoalIdx}
+                      dragOverIndex={dragOverGoalIdx}
+                      viewMode={goalsViewMode}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </main>
 
@@ -624,6 +929,17 @@ export default function App() {
         onAddTask={addTask}
         onToggleTask={toggleTask}
         onDeleteTask={deleteTask}
+      />
+
+      {/* Goal Management Modal */}
+      <GoalModal
+        isOpen={isGoalModalOpen}
+        goal={selectedGoal}
+        onClose={() => {
+          setIsGoalModalOpen(false);
+          setSelectedGoal(null);
+        }}
+        onSaveGoal={saveGoal}
       />
 
       {/* Toast Notifications */}
