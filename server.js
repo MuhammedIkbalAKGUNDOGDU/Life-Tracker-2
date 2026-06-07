@@ -424,36 +424,58 @@ app.delete('/api/goals/:id', async (req, res) => {
 async function updateHabitStreaks(habitId) {
   try {
     // Get habit config
-    const getHabit = await pool.query('SELECT frequency, custom_days, target_count FROM habits WHERE id = $1', [habitId]);
+    const getHabit = await pool.query('SELECT frequency, custom_days, target_count, weekly_targets FROM habits WHERE id = $1', [habitId]);
     if (getHabit.rows.length === 0) return;
-    const { frequency, custom_days, target_count } = getHabit.rows[0];
+    const { frequency, custom_days, target_count, weekly_targets } = getHabit.rows[0];
 
-    // Get completed logs (where count >= target_count)
+    // Get all logs to evaluate completions dynamically
     const logsQuery = `
-      SELECT log_date::text FROM habit_logs 
-      WHERE habit_id = $1 AND count >= $2 
+      SELECT log_date::text, count FROM habit_logs 
+      WHERE habit_id = $1
       ORDER BY log_date DESC;
     `;
-    const { rows: logs } = await pool.query(logsQuery, [habitId, target_count]);
-    const completedDates = new Set(logs.map(r => r.log_date));
+    const { rows: logs } = await pool.query(logsQuery, [habitId]);
+
+    // Helper to check target count for a given date
+    const getTargetForDate = (dateStr) => {
+      if (weekly_targets && weekly_targets.length === 7) {
+        const date = new Date(dateStr);
+        let dayOfWeek = date.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+        if (dayOfWeek === 0) dayOfWeek = 7;
+        return weekly_targets[dayOfWeek - 1] || 0;
+      }
+      return target_count || 1;
+    };
+
+    // Helper to check if habit is required on a given day
+    const isRequiredDay = (dateStr) => {
+      const date = new Date(dateStr);
+      let dayOfWeek = date.getUTCDay(); 
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      
+      if (weekly_targets && weekly_targets.length === 7) {
+        return (weekly_targets[dayOfWeek - 1] || 0) > 0;
+      }
+      if (frequency === 'daily') return true;
+      if (frequency === 'custom') {
+        return (custom_days || []).includes(dayOfWeek);
+      }
+      return true;
+    };
+
+    const completedDates = new Set();
+    for (const log of logs) {
+      const target = getTargetForDate(log.log_date);
+      if (target > 0 && log.count >= target) {
+        completedDates.add(log.log_date);
+      }
+    }
 
     let currentStreak = 0;
     let longestStreak = 0;
 
     if (completedDates.size > 0) {
       const formatDate = (date) => date.toISOString().split('T')[0];
-
-      // Helper to check if habit is required on a given day
-      const isRequiredDay = (dateStr) => {
-        if (frequency === 'daily') return true;
-        if (frequency === 'custom') {
-          const date = new Date(dateStr);
-          let dayOfWeek = date.getDay(); 
-          if (dayOfWeek === 0) dayOfWeek = 7; // Sunday maps to 7
-          return (custom_days || []).includes(dayOfWeek);
-        }
-        return true;
-      };
 
       // 1. Calculate Current Streak
       const today = new Date();
@@ -591,11 +613,11 @@ app.get('/api/habits', async (req, res) => {
 
 // 2. CREATE A NEW HABIT
 app.post('/api/habits', async (req, res) => {
-  const { title, description, category, frequency, custom_days, target_count } = req.body;
+  const { title, description, category, frequency, custom_days, target_count, weekly_targets } = req.body;
   try {
     const query = `
-      INSERT INTO habits (title, description, category, frequency, custom_days, target_count)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO habits (title, description, category, frequency, custom_days, target_count, weekly_targets)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
     const values = [
@@ -604,7 +626,8 @@ app.post('/api/habits', async (req, res) => {
       category || 'general',
       frequency || 'daily',
       custom_days || [],
-      parseInt(target_count) || 1
+      parseInt(target_count) || 1,
+      weekly_targets || null
     ];
     const { rows } = await pool.query(query, values);
     
@@ -689,12 +712,12 @@ app.post('/api/habits/:id/log', async (req, res) => {
 // 5. UPDATE HABIT DETAILS
 app.put('/api/habits/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, description, category, frequency, custom_days, target_count } = req.body;
+  const { title, description, category, frequency, custom_days, target_count, weekly_targets } = req.body;
   try {
     const query = `
       UPDATE habits
-      SET title = $1, description = $2, category = $3, frequency = $4, custom_days = $5, target_count = $6, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
+      SET title = $1, description = $2, category = $3, frequency = $4, custom_days = $5, target_count = $6, weekly_targets = $7, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $8
       RETURNING *;
     `;
     const values = [
@@ -704,6 +727,7 @@ app.put('/api/habits/:id', async (req, res) => {
       frequency || 'daily',
       custom_days || [],
       parseInt(target_count) || 1,
+      weekly_targets || null,
       id
     ];
     const { rows } = await pool.query(query, values);

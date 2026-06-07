@@ -57,7 +57,30 @@ export default function HabitCard({
   draggedIndex,
   dragOverIndex
 }) {
-  const targetCount = habit.target_count || 1;
+  const getTargetForDate = (date) => {
+    if (habit.weekly_targets && habit.weekly_targets.length === 7) {
+      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      return habit.weekly_targets[dayOfWeek - 1] || 0;
+    }
+    return habit.target_count || 1;
+  };
+
+  // Helper to check if habit is required on a specific day
+  const isRequiredDay = (date) => {
+    if (habit.weekly_targets && habit.weekly_targets.length === 7) {
+      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      return (habit.weekly_targets[dayOfWeek - 1] || 0) > 0;
+    }
+    if (habit.frequency === 'daily') return true;
+    if (habit.frequency === 'custom') {
+      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      return (habit.custom_days || []).includes(dayOfWeek);
+    }
+    return true;
+  };
 
   // Generate last 7 days (6 days ago to today)
   const getPast7Days = () => {
@@ -72,17 +95,6 @@ export default function HabitCard({
 
   const pastDays = getPast7Days();
 
-  // Helper to check if habit is required on a specific day
-  const isRequiredDay = (date) => {
-    if (habit.frequency === 'daily') return true;
-    if (habit.frequency === 'custom') {
-      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      if (dayOfWeek === 0) dayOfWeek = 7;
-      return (habit.custom_days || []).includes(dayOfWeek);
-    }
-    return true;
-  };
-
   // Get log for a specific date string
   const getLogForDate = (dateStr) => {
     return (habit.logs || []).find(l => l.log_date === dateStr);
@@ -92,17 +104,25 @@ export default function HabitCard({
     const dateStr = formatDateLocal(date);
     const log = getLogForDate(dateStr);
     const currentCount = log ? log.count : 0;
+    const dayTarget = getTargetForDate(date);
     
     // Toggle / increment logic
     let newCount = 0;
-    if (targetCount === 1) {
+    if (dayTarget === 1) {
       newCount = currentCount > 0 ? 0 : 1;
     } else {
-      newCount = currentCount >= targetCount ? 0 : currentCount + 1;
+      newCount = currentCount >= dayTarget ? 0 : currentCount + 1;
     }
 
     onLogHabit(habit.id, dateStr, newCount);
   };
+
+  const today = new Date();
+  const todayStr = formatDateLocal(today);
+  const todayLog = getLogForDate(todayStr);
+  const todayCount = todayLog ? todayLog.count : 0;
+  const todayTarget = getTargetForDate(today);
+  const todayRequired = isRequiredDay(today);
 
   const isDragging = index === draggedIndex;
   const isDragOver = index === dragOverIndex;
@@ -159,6 +179,46 @@ export default function HabitCard({
             {habit.description}
           </p>
         )}
+
+        {todayRequired ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>Bugünkü İlerleme:</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'monospace', minWidth: '30px', textAlign: 'center', color: todayCount >= todayTarget ? 'var(--success)' : 'var(--text-main)' }}>
+              {todayCount}/{todayTarget}
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon-only"
+                style={{ width: '22px', height: '22px', borderRadius: '4px', padding: 0 }}
+                onClick={() => {
+                  const newCount = Math.max(0, todayCount - 1);
+                  onLogHabit(habit.id, todayStr, newCount);
+                }}
+                disabled={todayCount <= 0}
+                title="1 Azalt"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon-only"
+                style={{ width: '22px', height: '22px', borderRadius: '4px', padding: 0 }}
+                onClick={() => {
+                  const newCount = todayCount + 1;
+                  onLogHabit(habit.id, todayStr, newCount);
+                }}
+                title="1 Artır"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+            Bugün yapılması gerekmiyor
+          </div>
+        )}
       </div>
 
       {/* Middle: Last 7 Days tracker */}
@@ -170,7 +230,8 @@ export default function HabitCard({
           const dateStr = formatDateLocal(date);
           const log = getLogForDate(dateStr);
           const currentCount = log ? log.count : 0;
-          const completed = currentCount >= targetCount;
+          const dayTarget = getTargetForDate(date);
+          const completed = dayTarget > 0 && currentCount >= dayTarget;
           const required = isRequiredDay(date);
           
           // Day of week letter (Pt, Sa...)
@@ -193,14 +254,14 @@ export default function HabitCard({
                 title={
                   !required 
                     ? 'Yapılması gerekmiyor' 
-                    : (targetCount > 1 ? `${currentCount}/${targetCount} tamamlandı (Tıkla ve artır)` : (completed ? 'Tamamlandı' : 'Tamamlanmadı'))
+                    : (dayTarget > 1 ? `${currentCount}/${dayTarget} tamamlandı (Tıkla ve artır)` : (completed ? 'Tamamlandı' : 'Tamamlanmadı'))
                 }
               >
                 {!required ? (
                   <span>-</span>
                 ) : completed ? (
                   <Check size={14} />
-                ) : targetCount > 1 ? (
+                ) : dayTarget > 1 ? (
                   <span style={{ fontSize: '10px', fontWeight: 700, color: currentCount > 0 ? 'var(--warning)' : 'inherit' }}>
                     {currentCount}
                   </span>

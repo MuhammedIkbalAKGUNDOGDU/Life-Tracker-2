@@ -14,6 +14,7 @@ export default function HabitModal({
   const [frequency, setFrequency] = useState('daily');
   const [customDays, setCustomDays] = useState([]); // Array of numbers 1-7
   const [targetCount, setTargetCount] = useState(1);
+  const [weeklyTargets, setWeeklyTargets] = useState([1, 1, 1, 1, 1, 1, 1]);
 
   // Sync state when modal opens
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function HabitModal({
       setFrequency(habit.frequency || 'daily');
       setCustomDays(habit.custom_days || []);
       setTargetCount(habit.target_count || 1);
+      setWeeklyTargets(habit.weekly_targets && habit.weekly_targets.length === 7 ? habit.weekly_targets : [1, 1, 1, 1, 1, 1, 1]);
     } else {
       setTitle('');
       setDescription('');
@@ -41,6 +43,7 @@ export default function HabitModal({
       setFrequency('daily');
       setCustomDays([]);
       setTargetCount(1);
+      setWeeklyTargets([1, 1, 1, 1, 1, 1, 1]);
     }
   }, [habit, isOpen]);
 
@@ -69,7 +72,8 @@ export default function HabitModal({
       category: category === 'other' ? (customCategory.trim() || 'Diğer') : category,
       frequency,
       custom_days: frequency === 'custom' ? customDays : [],
-      target_count: parseInt(targetCount) || 1
+      target_count: parseInt(targetCount) || 1,
+      weekly_targets: frequency === 'weekly_targets' ? weeklyTargets : null
     });
   };
 
@@ -157,11 +161,12 @@ export default function HabitModal({
               </div>
             )}
 
-            <div className="form-group">
+             <div className="form-group">
               <label>Sıklık (Frequency)</label>
               <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
                 <option value="daily">Her Gün (Daily)</option>
                 <option value="custom">Haftanın Belirli Günleri</option>
+                <option value="weekly_targets">Haftalık Gün Bazlı Hedefler</option>
               </select>
             </div>
 
@@ -197,6 +202,33 @@ export default function HabitModal({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {frequency === 'weekly_targets' && (
+              <div className="form-group animate-fade-in" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                <label style={{ marginBottom: '12px', display: 'block' }}>Günlük Hedef Miktarları (0 = Yapılmayacak/Hariç)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  {dayNames.map((day, idx) => (
+                    <div key={day.value} className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{day.label}</label>
+                      <input
+                        type="number"
+                        value={weeklyTargets[idx] ?? 1}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value) || 0);
+                          setWeeklyTargets(prev => {
+                            const next = [...prev];
+                            next[idx] = val;
+                            return next;
+                          });
+                        }}
+                        min="0"
+                        style={{ padding: '6px 10px', fontSize: '13px' }}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

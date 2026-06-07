@@ -32,6 +32,11 @@ export default function HabitMatrix({
 
   // Check if a habit is required on a date
   const isRequiredDay = (habit, date) => {
+    if (habit.weekly_targets && habit.weekly_targets.length === 7) {
+      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      return (habit.weekly_targets[dayOfWeek - 1] || 0) > 0;
+    }
     if (habit.frequency === 'daily') return true;
     if (habit.frequency === 'custom') {
       let dayOfWeek = date.getDay();
@@ -39,6 +44,15 @@ export default function HabitMatrix({
       return (habit.custom_days || []).includes(dayOfWeek);
     }
     return true;
+  };
+
+  const getTargetForDate = (habit, date) => {
+    if (habit.weekly_targets && habit.weekly_targets.length === 7) {
+      let dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (dayOfWeek === 0) dayOfWeek = 7;
+      return habit.weekly_targets[dayOfWeek - 1] || 0;
+    }
+    return habit.target_count || 1;
   };
 
   // Get log count
@@ -49,7 +63,7 @@ export default function HabitMatrix({
 
   const handleCellClick = (habit, date) => {
     const dateStr = formatDateLocal(date);
-    const targetCount = habit.target_count || 1;
+    const targetCount = getTargetForDate(habit, date);
     const currentCount = getLogCount(habit, dateStr);
 
     let newCount = 0;
@@ -128,7 +142,6 @@ export default function HabitMatrix({
               </tr>
             ) : (
               habits.map(habit => {
-                const target = habit.target_count || 1;
                 return (
                   <tr key={habit.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }} className="habit-matrix-row">
                     <td style={{ padding: '12px 8px', fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -147,8 +160,9 @@ export default function HabitMatrix({
                       const dateStr = formatDateLocal(d);
                       const required = isRequiredDay(habit, d);
                       const currentCount = getLogCount(habit, dateStr);
-                      const completed = currentCount >= target;
-                      const partial = currentCount > 0 && currentCount < target;
+                      const target = getTargetForDate(habit, d);
+                      const completed = target > 0 && currentCount >= target;
+                      const partial = target > 0 && currentCount > 0 && currentCount < target;
                       
                       const isToday = formatDateLocal(new Date()) === dateStr;
 
