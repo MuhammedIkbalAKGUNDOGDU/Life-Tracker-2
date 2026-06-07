@@ -11,7 +11,8 @@ import {
   Edit3, 
   Check, 
   Calendar,
-  Flame
+  Flame,
+  ExternalLink
 } from 'lucide-react';
 
 const getCategoryLabel = (cat) => {
@@ -199,6 +200,20 @@ export default function GoalCard({
               {daysLabel.text}
             </span>
           )}
+
+          {goal.link_url && (
+            <a 
+              href={goal.link_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="badge badge-priority-2" 
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', textDecoration: 'none', padding: '3px 8px', fontSize: '10px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={8} />
+              Link
+            </a>
+          )}
         </div>
 
         {/* Right Side: Date & Actions */}
@@ -256,6 +271,20 @@ export default function GoalCard({
                 <Calendar size={10} style={{ marginRight: '3px' }} />
                 {daysLabel.text}
               </span>
+            )}
+
+            {goal.link_url && (
+              <a 
+                href={goal.link_url} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="badge badge-priority-2" 
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', textDecoration: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink size={10} />
+                Bağlantı
+              </a>
             )}
           </div>
         </div>
