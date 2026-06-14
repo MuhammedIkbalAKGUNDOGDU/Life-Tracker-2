@@ -2121,6 +2121,27 @@ select option {
   border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
+/* --- ANALYTICS MODAL & GRAPH STYLES --- */
+.table-responsive th {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+}
+
+.table-responsive tr:hover {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.light-theme .table-responsive tr:hover {
+  background: rgba(15, 23, 42, 0.02) !important;
+}
+
+.light-theme .table-responsive tr {
+  color: var(--text-main);
+}
+
 
 
 

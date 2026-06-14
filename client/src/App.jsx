@@ -12,6 +12,7 @@ import HabitModal from './components/HabitModal';
 import HabitKPIs from './components/HabitKPIs';
 import MilestoneCard from './components/MilestoneCard';
 import MilestoneModal from './components/MilestoneModal';
+import MilestoneAnalyticsModal from './components/MilestoneAnalyticsModal';
 import RoutinesDashboard from './components/RoutinesDashboard';
 import JournalDashboard from './components/JournalDashboard';
 import { 
@@ -36,7 +37,8 @@ import {
   Flame,
   Trophy,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Lock
 } from 'lucide-react';
 
 export default function App() {
@@ -121,6 +123,7 @@ export default function App() {
   const [milestonesLoading, setMilestonesLoading] = useState(false);
   const [milestonesError, setMilestonesError] = useState(false);
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
+  const [isMilestoneAnalyticsOpen, setIsMilestoneAnalyticsOpen] = useState(false);
 
   // Routines States
   const [routines, setRoutines] = useState([]);
@@ -1545,57 +1548,138 @@ export default function App() {
           />
         ) : (
           /* Milestones View */
-          <>
-            {/* Action Bar */}
-            <section className="action-bar-section">
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Kilometre Taşları & Başarımlar</h2>
-              </div>
-              <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
-                <Plus /> Yeni Başarım Ekle
-              </button>
-            </section>
+          (() => {
+            const totalMilestones = milestones.length;
+            const unlockedMilestones = milestones.filter(m => m.is_unlocked).length;
+            const unlockRate = totalMilestones > 0 ? Math.round((unlockedMilestones / totalMilestones) * 100) : 0;
+            const lockedMilestones = totalMilestones - unlockedMilestones;
 
-            {/* Milestones Display Grid */}
-            <section className="projects-grid-section">
-              {milestonesLoading ? (
-                <div className="loading-state">
-                  <div className="spinner"></div>
-                  <p>Başarımlar yükleniyor...</p>
+            return (
+              <>
+                {/* Stats Section */}
+                <div className="stats-section" style={{ marginBottom: '24px' }}>
+                  <div className="stat-card glass-card">
+                    <div className="stat-header">
+                      <span className="stat-title">Toplam Başarım</span>
+                      <div className="stat-icon-wrapper blue">
+                        <Trophy />
+                      </div>
+                    </div>
+                    <div className="stat-value">{totalMilestones}</div>
+                    <div className="stat-desc">Tanımlanmış toplam başarım hedefi</div>
+                  </div>
+
+                  <div className="stat-card glass-card">
+                    <div className="stat-header">
+                      <span className="stat-title">Açılan Kilitler</span>
+                      <div className="stat-icon-wrapper emerald">
+                        <CheckCircle2 />
+                      </div>
+                    </div>
+                    <div className="stat-value">{unlockedMilestones}</div>
+                    <div className="stat-desc">Kazanılan toplam başarım sayısı</div>
+                  </div>
+
+                  <div className="stat-card glass-card">
+                    <div className="stat-header">
+                      <span className="stat-title">Kazanılma Oranı</span>
+                      <div className="stat-icon-wrapper orange">
+                        <Activity />
+                      </div>
+                    </div>
+                    <div className="stat-value">{unlockRate}%</div>
+                    <div className="stat-desc">Kazanılan başarımların yüzdesi</div>
+                  </div>
+
+                  <div className="stat-card glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="stat-header">
+                        <span className="stat-title">Kilitliler</span>
+                        <div className="stat-icon-wrapper violet">
+                          <Lock />
+                        </div>
+                      </div>
+                      <div className="stat-value">{lockedMilestones}</div>
+                      <div className="stat-desc">Henüz açılmamış başarımlar</div>
+                    </div>
+                    <button 
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => setIsMilestoneAnalyticsOpen(true)}
+                      style={{ 
+                        marginTop: '12px', 
+                        width: '100%', 
+                        justifyContent: 'center', 
+                        fontSize: '12px', 
+                        padding: '8px',
+                        borderRadius: '8px' 
+                      }}
+                    >
+                      Detaylı İstatistikleri İncele
+                    </button>
+                  </div>
                 </div>
-              ) : milestonesError ? (
-                <div className="empty-state">
-                  <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
-                  <h3>Bağlantı Hatası</h3>
-                  <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
-                  <button className="btn btn-secondary" onClick={() => fetchMilestones()}>
-                    <RefreshCw /> Tekrar Dene
-                  </button>
-                </div>
-              ) : milestones.length === 0 ? (
-                <div className="empty-state">
-                  <Trophy style={{ width: '56px', height: '56px' }} />
-                  <h3>Başarım Bulunamadı</h3>
-                  <p>Henüz hiçbir başarım/kilometre taşı eklemediniz.</p>
+
+                {/* Action Bar */}
+                <section className="action-bar-section">
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Kilometre Taşları & Başarımlar</h2>
+                  </div>
                   <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
-                    <Plus /> İlk Başarımı Ekle
+                    <Plus /> Yeni Başarım Ekle
                   </button>
-                </div>
-              ) : (
-                <div className="milestone-grid">
-                  {milestones.map((milestone) => (
-                    <MilestoneCard
-                      key={milestone.id}
-                      milestone={milestone}
-                      stats={milestoneStats}
-                      onUnlock={unlockMilestone}
-                      onDelete={deleteMilestone}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
+                </section>
+
+                {/* Milestones Display Grid */}
+                <section className="projects-grid-section">
+                  {milestonesLoading ? (
+                    <div className="loading-state">
+                      <div className="spinner"></div>
+                      <p>Başarımlar yükleniyor...</p>
+                    </div>
+                  ) : milestonesError ? (
+                    <div className="empty-state">
+                      <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
+                      <h3>Bağlantı Hatası</h3>
+                      <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
+                      <button className="btn btn-secondary" onClick={() => fetchMilestones()}>
+                        <RefreshCw /> Tekrar Dene
+                      </button>
+                    </div>
+                  ) : milestones.length === 0 ? (
+                    <div className="empty-state">
+                      <Trophy style={{ width: '56px', height: '56px' }} />
+                      <h3>Başarım Bulunamadı</h3>
+                      <p>Henüz hiçbir başarım/kilometre taşı eklemediniz.</p>
+                      <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
+                        <Plus /> İlk Başarımı Ekle
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="milestone-grid">
+                      {milestones.map((milestone) => (
+                        <MilestoneCard
+                          key={milestone.id}
+                          milestone={milestone}
+                          stats={milestoneStats}
+                          onUnlock={unlockMilestone}
+                          onDelete={deleteMilestone}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Milestone Analytics Modal */}
+                {isMilestoneAnalyticsOpen && (
+                  <MilestoneAnalyticsModal 
+                    milestones={milestones}
+                    onClose={() => setIsMilestoneAnalyticsOpen(false)}
+                  />
+                )}
+              </>
+            );
+          })()
         )}
       </main>
 
