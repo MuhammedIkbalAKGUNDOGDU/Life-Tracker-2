@@ -294,7 +294,7 @@ export default function GoalCard({
         </h3>
 
         {goal.why_note && (
-          <p style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--text-muted)', marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
+          <p style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
             <Flame size={13} style={{ color: 'var(--warning)', marginTop: '2px', flexShrink: 0 }} />
             <span>Neden: "{goal.why_note}"</span>
           </p>
@@ -331,7 +331,7 @@ export default function GoalCard({
           </div>
         ) : (
           /* Boolean yes/no checklist style */
-          <div className="project-card-progress-wrapper" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+          <div className="project-card-progress-wrapper" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
             <div 
               className={`custom-checkbox ${isCompleted ? 'checked' : ''}`}
               onClick={() => onToggleGoal(goal)}

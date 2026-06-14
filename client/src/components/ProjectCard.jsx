@@ -69,7 +69,7 @@ export default function ProjectCard({
 
         {/* Client label for external projects */}
         {project.type === 'external' && project.client && (
-          <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
             <User size={13} style={{ color: 'var(--primary)' }} />
             <span>Müşteri: <strong style={{ color: 'var(--text-main)' }}>{project.client}</strong></span>
           </div>
