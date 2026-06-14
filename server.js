@@ -1125,6 +1125,340 @@ app.delete('/api/journal/:id', async (req, res) => {
 });
 
 
+// === FINANCE (FİNANS PORTFÖYÜ & GELİR-GİDER) API ENDPOINTS ===
+
+// Helper: Yahoo Finance price fetcher
+const fetchYahooPrice = async (symbol) => {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const meta = data.chart?.result?.[0]?.meta;
+    if (!meta) return null;
+    const currentPrice = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose || currentPrice;
+    return {
+      price: currentPrice,
+      changePercent: ((currentPrice - prevClose) / prevClose) * 100
+    };
+  } catch (err) {
+    console.error(`Error fetching Yahoo Finance price for ${symbol}:`, err.message);
+    return null;
+  }
+};
+
+// Helper: TEFAS Fund profiles fetcher
+const fetchTefasPrices = async () => {
+  try {
+    const url = 'https://www.tefas.gov.tr/api/v1/Asset/GetFundProfileListData';
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: new URLSearchParams({
+        'draw': '1',
+        'start': '0',
+        'length': '1500' // Fetch up to 1500 funds
+      })
+    });
+    if (!response.ok) return {};
+    const data = await response.json();
+    const fundPrices = {};
+    if (data?.data && Array.isArray(data.data)) {
+      data.data.forEach(fund => {
+        const code = fund.FundCode;
+        const price = parseFloat(fund.Price);
+        if (code && !isNaN(price)) {
+          fundPrices[code.toUpperCase()] = price;
+        }
+      });
+    }
+    return fundPrices;
+  } catch (err) {
+    console.error('Error fetching TEFAS prices:', err.message);
+    return {};
+  }
+};
+
+// 1. GET ALL CURRENT PRICES (Exchange, Gold, Crypto, BIST, Funds)
+app.get('/api/finance/prices', async (req, res) => {
+  try {
+    // 1. Currencies & Gold (USDTRY, EURTRY, Gold Ons)
+    const usdTryData = await fetchYahooPrice('USDTRY=X') || { price: 32.50, changePercent: 0 };
+    const eurTryData = await fetchYahooPrice('EURTRY=X') || { price: 35.10, changePercent: 0 };
+    const eurUsdData = await fetchYahooPrice('EURUSD=X') || { price: 1.08, changePercent: 0 };
+    const goldOnsData = await fetchYahooPrice('GC=F') || { price: 2320, changePercent: 0 };
+
+    const usdTry = usdTryData.price;
+    const eurTry = eurTryData.price;
+
+    // Calculate Gram Gold and Quarter Gold spot prices in TRY
+    const gramGoldPrice = (goldOnsData.price / 31.1035) * usdTry;
+    const gramGoldChange = goldOnsData.changePercent;
+    
+    const ceyrekGoldPrice = gramGoldPrice * 1.63;
+    const ceyrekGoldChange = goldOnsData.changePercent;
+
+    // 2. Cryptos (BTC, ETH, SOL)
+    const btcData = await fetchYahooPrice('BTC-USD') || { price: 67000, changePercent: 0 };
+    const ethData = await fetchYahooPrice('ETH-USD') || { price: 3500, changePercent: 0 };
+    const solData = await fetchYahooPrice('SOL-USD') || { price: 150, changePercent: 0 };
+
+    // Convert Cryptos to TRY
+    const btcTry = btcData.price * usdTry;
+    const ethTry = ethData.price * usdTry;
+    const solTry = solData.price * usdTry;
+
+    // 3. BIST 100 & Major BIST Stocks
+    const bist100Data = await fetchYahooPrice('XU100.IS') || { price: 10100, changePercent: 0 };
+    const thyaoData = await fetchYahooPrice('THYAO.IS') || { price: 310, changePercent: 0 };
+    const aselsData = await fetchYahooPrice('ASELS.IS') || { price: 62, changePercent: 0 };
+    const ereglData = await fetchYahooPrice('EREGL.IS') || { price: 50, changePercent: 0 };
+    const kcholData = await fetchYahooPrice('KCHOL.IS') || { price: 220, changePercent: 0 };
+    const bimasData = await fetchYahooPrice('BIMAS.IS') || { price: 410, changePercent: 0 };
+
+    // 4. TEFAS Funds
+    const tefasPrices = await fetchTefasPrices();
+
+    const prices = {
+      // Currencies
+      USD: { TRY: usdTry, USD: 1, EUR: 1 / eurUsdData.price, changePercent: usdTryData.changePercent },
+      EUR: { TRY: eurTry, USD: eurUsdData.price, EUR: 1, changePercent: eurTryData.changePercent },
+      TRY: { TRY: 1, USD: 1 / usdTry, EUR: 1 / eurTry, changePercent: 0 },
+      
+      // Gold
+      GRAM_GOLD: { TRY: gramGoldPrice, USD: gramGoldPrice / usdTry, EUR: gramGoldPrice / eurTry, changePercent: gramGoldChange },
+      CEYREK_GOLD: { TRY: ceyrekGoldPrice, USD: ceyrekGoldPrice / usdTry, EUR: ceyrekGoldPrice / eurTry, changePercent: ceyrekGoldChange },
+      ONS_GOLD: { TRY: goldOnsData.price * usdTry, USD: goldOnsData.price, EUR: goldOnsData.price / eurUsdData.price, changePercent: goldOnsData.changePercent },
+
+      // Cryptos
+      BTC: { TRY: btcTry, USD: btcData.price, EUR: btcData.price / eurUsdData.price, changePercent: btcData.changePercent },
+      ETH: { TRY: ethTry, USD: ethData.price, EUR: ethData.price / eurUsdData.price, changePercent: ethData.changePercent },
+      SOL: { TRY: solTry, USD: solData.price, EUR: solData.price / eurUsdData.price, changePercent: solData.changePercent },
+
+      // BIST Stocks
+      XU100: { TRY: bist100Data.price, USD: bist100Data.price / usdTry, EUR: bist100Data.price / eurTry, changePercent: bist100Data.changePercent },
+      THYAO: { TRY: thyaoData.price, USD: thyaoData.price / usdTry, EUR: thyaoData.price / eurTry, changePercent: thyaoData.changePercent },
+      ASELS: { TRY: aselsData.price, USD: aselsData.price / usdTry, EUR: aselsData.price / eurTry, changePercent: aselsData.changePercent },
+      EREGL: { TRY: ereglData.price, USD: ereglData.price / usdTry, EUR: ereglData.price / eurTry, changePercent: ereglData.changePercent },
+      KCHOL: { TRY: kcholData.price, USD: kcholData.price / usdTry, EUR: kcholData.price / eurTry, changePercent: kcholData.changePercent },
+      BIMAS: { TRY: bimasData.price, USD: bimasData.price / usdTry, EUR: bimasData.price / eurTry, changePercent: bimasData.changePercent },
+
+      // TEFAS Funds
+      TEFAS: tefasPrices
+    };
+
+    // 5. Fetch custom BIST/Crypto tickers from database to get their live prices dynamically
+    try {
+      const { rows: userAssets } = await pool.query("SELECT DISTINCT ticker, asset_type FROM finance_assets");
+      const predefinedTickers = new Set(['USD', 'EUR', 'TRY', 'GRAM_GOLD', 'CEYREK_GOLD', 'ONS_GOLD', 'BTC', 'ETH', 'SOL', 'XU100', 'THYAO', 'ASELS', 'EREGL', 'KCHOL', 'BIMAS']);
+      
+      for (const asset of userAssets) {
+        const ticker = asset.ticker.toUpperCase();
+        const type = asset.asset_type.toLowerCase();
+        
+        if (!predefinedTickers.has(ticker) && type !== 'cash' && type !== 'fund') {
+          let symbol = ticker;
+          if (type === 'stock') {
+            symbol = `${ticker}.IS`;
+          } else if (type === 'crypto') {
+            symbol = `${ticker}-USD`;
+          } else if (type === 'gold' && ticker === 'ONS') {
+            symbol = 'GC=F';
+          }
+          
+          const yahooData = await fetchYahooPrice(symbol);
+          if (yahooData) {
+            let tryVal, usdVal, eurVal;
+            if (type === 'stock') {
+              tryVal = yahooData.price;
+              usdVal = tryVal / usdTry;
+              eurVal = tryVal / eurTry;
+            } else if (type === 'crypto') {
+              usdVal = yahooData.price;
+              tryVal = usdVal * usdTry;
+              eurVal = usdVal / eurUsdData.price;
+            } else {
+              tryVal = yahooData.price;
+              usdVal = tryVal / usdTry;
+              eurVal = tryVal / eurTry;
+            }
+            
+            prices[ticker] = {
+              TRY: tryVal,
+              USD: usdVal,
+              EUR: eurVal,
+              changePercent: yahooData.changePercent
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching custom asset prices dynamically:', err.message);
+    }
+
+    res.json(prices);
+  } catch (err) {
+    console.error('Error compiling finance prices:', err.message);
+    res.status(500).json({ error: 'Server error retrieving current prices' });
+  }
+});
+
+// 2. GET USER PORTFOLIO ASSETS
+app.get('/api/finance/assets', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM finance_assets ORDER BY asset_type, ticker');
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving assets' });
+  }
+});
+
+// 3. ADD OR UPDATE PORTFOLIO ASSET
+app.post('/api/finance/assets', async (req, res) => {
+  const { asset_type, ticker, amount, cost_price, asset_currency } = req.body;
+  try {
+    const upperTicker = ticker.trim().toUpperCase();
+    const type = asset_type.toLowerCase();
+    const currency = (asset_currency || 'TRY').toUpperCase();
+    
+    // Check if asset already exists in portfolio with same type, ticker and currency
+    const checkQuery = 'SELECT * FROM finance_assets WHERE asset_type = $1 AND ticker = $2 AND asset_currency = $3';
+    const checkResult = await pool.query(checkQuery, [type, upperTicker, currency]);
+    
+    if (checkResult.rows.length > 0) {
+      // Calculate weighted average cost price and add amounts
+      const existing = checkResult.rows[0];
+      const newAmount = parseFloat(existing.amount) + parseFloat(amount);
+      const newCost = ((parseFloat(existing.amount) * parseFloat(existing.cost_price)) + (parseFloat(amount) * parseFloat(cost_price))) / newAmount;
+      
+      const updateQuery = 'UPDATE finance_assets SET amount = $1, cost_price = $2 WHERE id = $3 RETURNING *';
+      const { rows } = await pool.query(updateQuery, [newAmount, newCost, existing.id]);
+      res.json(rows[0]);
+    } else {
+      // Insert new asset
+      const insertQuery = 'INSERT INTO finance_assets (asset_type, ticker, amount, cost_price, asset_currency) VALUES ($1, $2, $3, $4, $5) RETURNING *';
+      const { rows } = await pool.query(insertQuery, [type, upperTicker, amount, cost_price, currency]);
+      res.status(201).json(rows[0]);
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error saving portfolio asset' });
+  }
+});
+
+// 4. DELETE PORTFOLIO ASSET
+app.delete('/api/finance/assets/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM finance_assets WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    res.json({ message: 'Asset deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting asset' });
+  }
+});
+
+// 5. GET TRANSACTIONS (Gelir/Gider)
+app.get('/api/finance/transactions', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM finance_transactions ORDER BY transaction_date DESC, created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving transactions' });
+  }
+});
+
+// 6. ADD TRANSACTION (including future transactions and installments splitting)
+app.post('/api/finance/transactions', async (req, res) => {
+  const { type, category, amount, transaction_date, description, installments_count } = req.body;
+  try {
+    const count = parseInt(installments_count) || 1;
+    const dateStr = transaction_date || new Date().toISOString().split('T')[0];
+    const upperType = type.toLowerCase();
+    
+    if (count > 1 && upperType === 'expense') {
+      // Installments: split into separate rows in DB for future months
+      const insertedRows = [];
+      const monthlyAmount = (parseFloat(amount) / count);
+      
+      for (let i = 0; i < count; i++) {
+        // Calculate date of installment
+        const d = new Date(dateStr);
+        d.setMonth(d.getMonth() + i);
+        const installmentDate = d.toISOString().split('T')[0];
+        const installmentDesc = `${description || 'Taksitli Alışveriş'} (Taksit ${i + 1}/${count})`;
+        
+        const query = `
+          INSERT INTO finance_transactions 
+          (type, category, amount, transaction_date, description, installments_count, installment_number) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+        `;
+        const { rows } = await pool.query(query, [
+          'expense',
+          category || 'installments',
+          monthlyAmount,
+          installmentDate,
+          installmentDesc,
+          count,
+          i + 1
+        ]);
+        insertedRows.push(rows[0]);
+      }
+      res.status(201).json(insertedRows);
+    } else {
+      // Single transaction (can be future dated)
+      const query = `
+        INSERT INTO finance_transactions 
+        (type, category, amount, transaction_date, description, installments_count, installment_number) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+      `;
+      const { rows } = await pool.query(query, [
+        upperType,
+        category || 'general',
+        amount,
+        dateStr,
+        description || '',
+        1,
+        1
+      ]);
+      res.status(201).json(rows[0]);
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error saving transaction' });
+  }
+});
+
+// 7. DELETE A TRANSACTION
+app.delete('/api/finance/transactions/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM finance_transactions WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json({ message: 'Transaction deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting transaction' });
+  }
+});
+
+
 // Serve the frontend app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));

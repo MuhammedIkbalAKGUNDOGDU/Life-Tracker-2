@@ -139,8 +139,26 @@ CREATE TABLE IF NOT EXISTS routine_starts (
     started_date DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(routine_id, started_date)
+);-- Finance Assets (Varlık Portföyü) Tablosu
+CREATE TABLE IF NOT EXISTS finance_assets (
+    id SERIAL PRIMARY KEY,
+    asset_type VARCHAR(50) NOT NULL, -- gold, stock, crypto, fund, cash
+    ticker VARCHAR(50) NOT NULL,     -- GRAM, BTC, THYAO, MAC, USD vb.
+    amount NUMERIC(16, 6) DEFAULT 0.000000,
+    cost_price NUMERIC(16, 2) DEFAULT 0.00,
+    asset_currency VARCHAR(10) DEFAULT 'TRY', -- TRY, USD, EUR
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-
-
-
+-- Finance Transactions (Gelir & Gider Kayıtları) Tablosu
+CREATE TABLE IF NOT EXISTS finance_transactions (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(20) NOT NULL,       -- income, expense
+    category VARCHAR(100) NOT NULL,  -- salary, rent, food, transport, bills, installments, investment, general vb.
+    amount NUMERIC(12, 2) NOT NULL,
+    transaction_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    description VARCHAR(255) DEFAULT '',
+    installments_count INTEGER DEFAULT 1,
+    installment_number INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

@@ -2142,6 +2142,10 @@ select option {
   color: var(--text-main);
 }
 
+.market-ticker-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 
 
 

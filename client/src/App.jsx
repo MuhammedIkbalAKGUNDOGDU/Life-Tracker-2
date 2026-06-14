@@ -15,6 +15,7 @@ import MilestoneModal from './components/MilestoneModal';
 import MilestoneAnalyticsModal from './components/MilestoneAnalyticsModal';
 import RoutinesDashboard from './components/RoutinesDashboard';
 import JournalDashboard from './components/JournalDashboard';
+import FinanceDashboard from './components/FinanceDashboard';
 import { 
   Activity, 
   FolderKanban, 
@@ -38,7 +39,8 @@ import {
   Trophy,
   BookOpen,
   Sparkles,
-  Lock
+  Lock,
+  Coins
 } from 'lucide-react';
 
 export default function App() {
@@ -61,7 +63,8 @@ export default function App() {
       { id: 'habits', label: 'Alışkanlıklar', icon: 'habits' },
       { id: 'routines', label: 'Rutinler', icon: 'routines' },
       { id: 'journal', label: 'Günlük', icon: 'journal' },
-      { id: 'milestones', label: 'Başarımlar', icon: 'milestones' }
+      { id: 'milestones', label: 'Başarımlar', icon: 'milestones' },
+      { id: 'finance', label: 'Finans', icon: 'finance' }
     ];
     if (savedTabs) {
       try { 
@@ -77,6 +80,9 @@ export default function App() {
         }
         if (!parsed.some(t => t.id === 'milestones')) {
           parsed.push({ id: 'milestones', label: 'Başarımlar', icon: 'milestones' });
+        }
+        if (!parsed.some(t => t.id === 'finance')) {
+          parsed.push({ id: 'finance', label: 'Finans', icon: 'finance' });
         }
         return parsed; 
       } catch(e) { }
@@ -135,6 +141,13 @@ export default function App() {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalError, setJournalError] = useState(false);
 
+  // Finance States
+  const [financeAssets, setFinanceAssets] = useState([]);
+  const [financeTransactions, setFinanceTransactions] = useState([]);
+  const [financePrices, setFinancePrices] = useState(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState(false);
+
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
 
@@ -153,6 +166,7 @@ export default function App() {
     fetchMilestones();
     fetchRoutines();
     fetchJournal();
+    fetchFinanceData();
   }, []);
 
   // Sync / Auto-evaluate milestones whenever system data updates
@@ -932,6 +946,7 @@ export default function App() {
       case 'routines': return <Sparkles />;
       case 'journal': return <BookOpen />;
       case 'milestones': return <Trophy />;
+      case 'finance': return <Coins />;
       default: return <Info />;
     }
   };
@@ -1133,6 +1148,99 @@ export default function App() {
         if (!res.ok) throw new Error('Günlük kaydı silinemedi.');
         setJournalEntries(prev => prev.filter(e => e.id !== id));
         showToast('Günlük kaydı silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
+  // === FINANCE ACTIONS & OPERATION HANDLERS ===
+  const fetchFinanceData = async () => {
+    setFinanceLoading(true);
+    setFinanceError(false);
+    try {
+      const [pricesRes, assetsRes, txsRes] = await Promise.all([
+        fetch('/api/finance/prices'),
+        fetch('/api/finance/assets'),
+        fetch('/api/finance/transactions')
+      ]);
+      
+      if (!pricesRes.ok || !assetsRes.ok || !txsRes.ok) throw new Error('Finans verileri yüklenemedi.');
+      
+      const [prices, assets, txs] = await Promise.all([
+        pricesRes.json(),
+        assetsRes.json(),
+        txsRes.json()
+      ]);
+      
+      setFinancePrices(prices);
+      setFinanceAssets(assets);
+      setFinanceTransactions(txs);
+    } catch (err) {
+      console.error(err);
+      setFinanceError(true);
+    } finally {
+      setFinanceLoading(false);
+    }
+  };
+
+  const saveFinanceAsset = async (assetData) => {
+    try {
+      const res = await fetch('/api/finance/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(assetData)
+      });
+      if (!res.ok) throw new Error('Varlık kaydedilemedi.');
+      await fetchFinanceData();
+      showToast('Varlık başarıyla portföye eklendi/güncellendi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteFinanceAsset = async (id) => {
+    if (window.confirm('Bu varlığı portföyünüzden silmek istediğinize emin misiniz?')) {
+      try {
+        const res = await fetch(`/api/finance/assets/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Varlık silinemedi.');
+        setFinanceAssets(prev => prev.filter(a => a.id !== id));
+        showToast('Varlık portföyden silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
+  const saveFinanceTransaction = async (txData) => {
+    try {
+      const res = await fetch('/api/finance/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txData)
+      });
+      if (!res.ok) throw new Error('İşlem kaydedilemedi.');
+      const data = await res.json();
+      
+      if (Array.isArray(data)) {
+        setFinanceTransactions(prev => [...data, ...prev]);
+        showToast(`${data.length} taksit işlemi başarıyla oluşturuldu.`, 'success');
+      } else {
+        setFinanceTransactions(prev => [data, ...prev]);
+        showToast('Finansal işlem başarıyla kaydedildi.', 'success');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteFinanceTransaction = async (id) => {
+    if (window.confirm('Bu finansal işlemi silmek istediğinize emin misiniz?')) {
+      try {
+        const res = await fetch(`/api/finance/transactions/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('İşlem silinemedi.');
+        setFinanceTransactions(prev => prev.filter(t => t.id !== id));
+        showToast('İşlem silindi.', 'info');
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1545,6 +1653,19 @@ export default function App() {
             entries={journalEntries}
             onSaveEntry={saveJournalEntry}
             onDeleteEntry={deleteJournalEntry}
+          />
+        ) : activeTab === 'finance' ? (
+          <FinanceDashboard 
+            assets={financeAssets}
+            transactions={financeTransactions}
+            prices={financePrices}
+            loading={financeLoading}
+            error={financeError}
+            onSaveAsset={saveFinanceAsset}
+            onDeleteAsset={deleteFinanceAsset}
+            onSaveTransaction={saveFinanceTransaction}
+            onDeleteTransaction={deleteFinanceTransaction}
+            onRefreshPrices={fetchFinanceData}
           />
         ) : (
           /* Milestones View */
