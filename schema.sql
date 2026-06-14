@@ -71,3 +71,76 @@ CREATE TABLE IF NOT EXISTS habit_logs (
     UNIQUE(habit_id, log_date)
 );
 
+
+-- Milestones (Başarımlar & Kilometre Taşları) Tablosu
+CREATE TABLE IF NOT EXISTS milestones (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
+    reward VARCHAR(255) DEFAULT '', -- Ödül / Motivasyon
+    is_unlocked BOOLEAN DEFAULT FALSE,
+    unlocked_at TIMESTAMP WITH TIME ZONE,
+    target_type VARCHAR(50) DEFAULT 'manual', -- 'manual', 'projects_completed', 'goals_achieved', 'habit_streak'
+    target_value INTEGER DEFAULT 1, -- Kilidin açılması için gereken miktar
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- Routines (Rutinler) Tablosu
+CREATE TABLE IF NOT EXISTS routines (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
+    icon VARCHAR(50) DEFAULT 'sun', -- sun, moon, briefcase vb.
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Routine Steps (Rutin Adımları) Tablosu
+CREATE TABLE IF NOT EXISTS routine_steps (
+    id SERIAL PRIMARY KEY,
+    routine_id INTEGER REFERENCES routines(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    sort_order INTEGER DEFAULT 0
+);
+
+-- Routine Completions (Rutin Günlük Tamamlanmaları) Tablosu
+CREATE TABLE IF NOT EXISTS routine_completions (
+    id SERIAL PRIMARY KEY,
+    routine_id INTEGER REFERENCES routines(id) ON DELETE CASCADE,
+    completed_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(routine_id, completed_date)
+);
+
+-- Journal Entries (Günlük & Duygu Takibi) Tablosu
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id SERIAL PRIMARY KEY,
+    entry_date DATE NOT NULL UNIQUE DEFAULT CURRENT_DATE,
+    mood_rating INTEGER CHECK (mood_rating >= 1 AND mood_rating <= 5), -- 1-5 puan
+    content TEXT DEFAULT '',
+    tags VARCHAR(50)[] DEFAULT '{}', -- ['verimli', 'mutlu']
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Routine Step Completions (Rutin Adım Tamamlanmaları) Tablosu
+CREATE TABLE IF NOT EXISTS routine_step_completions (
+    id SERIAL PRIMARY KEY,
+    step_id INTEGER REFERENCES routine_steps(id) ON DELETE CASCADE,
+    completed_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(step_id, completed_date)
+);
+
+-- Routine Starts (Rutin Başlatılma Durumları) Tablosu
+CREATE TABLE IF NOT EXISTS routine_starts (
+    id SERIAL PRIMARY KEY,
+    routine_id INTEGER REFERENCES routines(id) ON DELETE CASCADE,
+    started_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(routine_id, started_date)
+);
+
+
+
+

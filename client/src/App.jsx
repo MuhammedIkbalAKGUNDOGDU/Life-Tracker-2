@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import confetti from 'canvas-confetti';
 import KPIStats from './components/KPIStats';
 import ProjectCard from './components/ProjectCard';
 import ProjectModal from './components/ProjectModal';
@@ -9,6 +10,10 @@ import HabitCard from './components/HabitCard';
 import HabitMatrix from './components/HabitMatrix';
 import HabitModal from './components/HabitModal';
 import HabitKPIs from './components/HabitKPIs';
+import MilestoneCard from './components/MilestoneCard';
+import MilestoneModal from './components/MilestoneModal';
+import RoutinesDashboard from './components/RoutinesDashboard';
+import JournalDashboard from './components/JournalDashboard';
 import { 
   Activity, 
   FolderKanban, 
@@ -28,7 +33,10 @@ import {
   FolderOpen,
   LayoutGrid,
   List,
-  Flame
+  Flame,
+  Trophy,
+  BookOpen,
+  Sparkles
 } from 'lucide-react';
 
 export default function App() {
@@ -48,13 +56,25 @@ export default function App() {
     const defaultTabs = [
       { id: 'projects', label: 'Projeler', icon: 'projects' },
       { id: 'goals', label: 'Hedefler', icon: 'goals' },
-      { id: 'habits', label: 'Alışkanlıklar', icon: 'habits' }
+      { id: 'habits', label: 'Alışkanlıklar', icon: 'habits' },
+      { id: 'routines', label: 'Rutinler', icon: 'routines' },
+      { id: 'journal', label: 'Günlük', icon: 'journal' },
+      { id: 'milestones', label: 'Başarımlar', icon: 'milestones' }
     ];
     if (savedTabs) {
       try { 
         const parsed = JSON.parse(savedTabs); 
         if (!parsed.some(t => t.id === 'habits')) {
           parsed.push({ id: 'habits', label: 'Alışkanlıklar', icon: 'habits' });
+        }
+        if (!parsed.some(t => t.id === 'routines')) {
+          parsed.push({ id: 'routines', label: 'Rutinler', icon: 'routines' });
+        }
+        if (!parsed.some(t => t.id === 'journal')) {
+          parsed.push({ id: 'journal', label: 'Günlük', icon: 'journal' });
+        }
+        if (!parsed.some(t => t.id === 'milestones')) {
+          parsed.push({ id: 'milestones', label: 'Başarımlar', icon: 'milestones' });
         }
         return parsed; 
       } catch(e) { }
@@ -95,6 +115,23 @@ export default function App() {
   const [draggedHabitIdx, setDraggedHabitIdx] = useState(null);
   const [dragOverHabitIdx, setDragOverHabitIdx] = useState(null);
 
+  // Milestones States
+  const [milestones, setMilestones] = useState([]);
+  const [milestoneStats, setMilestoneStats] = useState({ completedProjects: 0, completedGoals: 0, maxHabitStreak: 0 });
+  const [milestonesLoading, setMilestonesLoading] = useState(false);
+  const [milestonesError, setMilestonesError] = useState(false);
+  const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
+
+  // Routines States
+  const [routines, setRoutines] = useState([]);
+  const [routinesLoading, setRoutinesLoading] = useState(false);
+  const [routinesError, setRoutinesError] = useState(false);
+
+  // Journal/Mood States
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalError, setJournalError] = useState(false);
+
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
 
@@ -110,7 +147,20 @@ export default function App() {
     fetchProjects();
     fetchGoals();
     fetchHabits();
+    fetchMilestones();
+    fetchRoutines();
+    fetchJournal();
   }, []);
+
+  // Sync / Auto-evaluate milestones whenever system data updates
+  useEffect(() => {
+    if (milestones.length > 0) {
+      const timer = setTimeout(() => {
+        fetchMilestones(true);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [projects, goals, habits]);
 
   useEffect(() => {
     if (theme === 'light') {
@@ -787,12 +837,302 @@ export default function App() {
     setDragOverHabitIdx(null);
   };
 
+  // === MILESTONES ACTIONS & OPERATION HANDLERS ===
+  const celebrate = () => {
+    confetti({
+      particleCount: 150,
+      spread: 80,
+      origin: { y: 0.6 }
+    });
+  };
+
+  const fetchMilestones = async (silent = false) => {
+    if (!silent) setMilestonesLoading(true);
+    setMilestonesError(false);
+    try {
+      const res = await fetch('/api/milestones');
+      if (!res.ok) throw new Error('Başarımlar yüklenirken bir hata oluştu.');
+      const data = await res.json();
+      
+      const newUnlockedCount = data.milestones.filter(m => m.is_unlocked).length;
+      
+      setMilestones(prev => {
+        const oldUnlockedCount = prev.filter(m => m.is_unlocked).length;
+        if (prev.length > 0 && newUnlockedCount > oldUnlockedCount) {
+          celebrate();
+          showToast('Tebrikler! Yeni bir başarım kazandınız! 🏆', 'success');
+        }
+        return data.milestones;
+      });
+      setMilestoneStats(data.stats);
+    } catch (err) {
+      console.error(err);
+      setMilestonesError(true);
+    } finally {
+      if (!silent) setMilestonesLoading(false);
+    }
+  };
+
+  const saveMilestone = async (milestoneData) => {
+    try {
+      const res = await fetch('/api/milestones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(milestoneData)
+      });
+      if (!res.ok) throw new Error('Başarım eklenirken hata oluştu.');
+      const data = await res.json();
+      setMilestones(prev => [data, ...prev]);
+      showToast('Yeni başarım başarıyla eklendi.', 'success');
+      setIsMilestoneModalOpen(false);
+      fetchMilestones(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const unlockMilestone = async (id) => {
+    try {
+      const res = await fetch(`/api/milestones/${id}/unlock`, {
+        method: 'PUT'
+      });
+      if (!res.ok) throw new Error('Kilidi açma işlemi başarısız.');
+      const data = await res.json();
+      setMilestones(prev => prev.map(m => m.id === id ? data : m));
+      celebrate();
+      showToast('Tebrikler! Kilometre taşının kilidini açtınız! 🏆', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteMilestone = async (id) => {
+    if (window.confirm('Bu başarımı silmek istediğinize emin misiniz?')) {
+      try {
+        const res = await fetch(`/api/milestones/${id}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Başarım silinemedi.');
+        setMilestones(prev => prev.filter(m => m.id !== id));
+        showToast('Başarım silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
   const renderTabIcon = (iconName) => {
     switch (iconName) {
       case 'projects': return <FolderKanban />;
       case 'goals': return <Target />;
       case 'habits': return <Flame />;
+      case 'routines': return <Sparkles />;
+      case 'journal': return <BookOpen />;
+      case 'milestones': return <Trophy />;
       default: return <Info />;
+    }
+  };
+
+  // === ROUTINES ACTIONS & OPERATION HANDLERS ===
+  const fetchRoutines = async () => {
+    setRoutinesLoading(true);
+    setRoutinesError(false);
+    try {
+      const res = await fetch('/api/routines');
+      if (!res.ok) throw new Error('Rutinler yüklenirken bir hata oluştu.');
+      const data = await res.json();
+      setRoutines(data);
+    } catch (err) {
+      console.error(err);
+      setRoutinesError(true);
+    } finally {
+      setRoutinesLoading(false);
+    }
+  };
+
+  const saveRoutine = async (routineData) => {
+    try {
+      const res = await fetch('/api/routines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(routineData)
+      });
+      if (!res.ok) throw new Error('Rutin kaydedilirken hata oluştu.');
+      const data = await res.json();
+      setRoutines(prev => [data, ...prev]);
+      showToast('Yeni rutin başarıyla eklendi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const toggleRoutineComplete = async (id, isCompleted) => {
+    try {
+      const res = await fetch(`/api/routines/${id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_completed: isCompleted })
+      });
+      if (!res.ok) throw new Error('Rutin durumu güncellenemedi.');
+      
+      setRoutines(prev => prev.map(r => r.id === id ? { 
+        ...r, 
+        is_completed_today: isCompleted,
+        is_started_today: isCompleted ? true : r.is_started_today,
+        steps: r.steps.map(s => ({ ...s, is_completed_today: isCompleted }))
+      } : r));
+      if (isCompleted) {
+        showToast('Harika! Rutini bugün için tamamladınız. 🌟', 'success');
+      } else {
+        showToast('Rutin tamamlanma kaydı geri alındı.', 'info');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const startRoutine = async (id, isStarted) => {
+    try {
+      const res = await fetch(`/api/routines/${id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_started: isStarted })
+      });
+      if (!res.ok) throw new Error('Rutin başlatma durumu güncellenemedi.');
+      
+      setRoutines(prev => prev.map(r => {
+        if (r.id === id) {
+          return {
+            ...r,
+            is_started_today: isStarted,
+            is_completed_today: isStarted ? r.is_completed_today : false,
+            steps: r.steps.map(s => isStarted ? s : { ...s, is_completed_today: false })
+          };
+        }
+        return r;
+      }));
+
+      if (isStarted) {
+        showToast('Rutin başlatıldı, adımları tamamlamaya başlayabilirsiniz! 🚀', 'success');
+      } else {
+        showToast('Rutin sıfırlandı.', 'info');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const toggleStepComplete = async (routineId, stepId, isCompleted) => {
+    try {
+      const res = await fetch(`/api/routines/steps/${stepId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_completed: isCompleted })
+      });
+      if (!res.ok) throw new Error('Adım durumu güncellenemedi.');
+
+      setRoutines(prev => prev.map(r => {
+        if (r.id === routineId) {
+          const updatedSteps = r.steps.map(s => s.id === stepId ? { ...s, is_completed_today: isCompleted } : s);
+          const allCompleted = updatedSteps.length > 0 && updatedSteps.every(s => s.is_completed_today);
+          
+          if (allCompleted && !r.is_completed_today) {
+            fetch(`/api/routines/${routineId}/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ is_completed: true })
+            }).catch(console.error);
+            showToast('Harika! Rutini bugün için tamamladınız. 🌟', 'success');
+          } else if (!allCompleted && r.is_completed_today) {
+            fetch(`/api/routines/${routineId}/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ is_completed: false })
+            }).catch(console.error);
+          }
+
+          return {
+            ...r,
+            steps: updatedSteps,
+            is_completed_today: allCompleted,
+            is_started_today: true
+          };
+        }
+        return r;
+      }));
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteRoutine = async (id) => {
+    if (window.confirm('Bu rutini silmek istediğinize emin misiniz?')) {
+      try {
+        const res = await fetch(`/api/routines/${id}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Rutin silinemedi.');
+        setRoutines(prev => prev.filter(r => r.id !== id));
+        showToast('Rutin başarıyla silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  };
+
+  // === JOURNAL ACTIONS & OPERATION HANDLERS ===
+  const fetchJournal = async () => {
+    setJournalLoading(true);
+    setJournalError(false);
+    try {
+      const res = await fetch('/api/journal');
+      if (!res.ok) throw new Error('Günlük kayıtları yüklenirken bir hata oluştu.');
+      const data = await res.json();
+      setJournalEntries(data);
+    } catch (err) {
+      console.error(err);
+      setJournalError(true);
+    } finally {
+      setJournalLoading(false);
+    }
+  };
+
+  const saveJournalEntry = async (entryData) => {
+    try {
+      const res = await fetch('/api/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entryData)
+      });
+      if (!res.ok) throw new Error('Günlük kaydı kaydedilirken hata oluştu.');
+      const data = await res.json();
+      
+      setJournalEntries(prev => {
+        const exists = prev.some(e => e.entry_date.split('T')[0] === data.entry_date.split('T')[0]);
+        if (exists) {
+          return prev.map(e => e.entry_date.split('T')[0] === data.entry_date.split('T')[0] ? data : e);
+        } else {
+          return [data, ...prev];
+        }
+      });
+      showToast('Günlük kaydı başarıyla kaydedildi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteJournalEntry = async (id) => {
+    if (window.confirm('Bu günlük kaydını silmek istediğinize emin misiniz?')) {
+      try {
+        const res = await fetch(`/api/journal/${id}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Günlük kaydı silinemedi.');
+        setJournalEntries(prev => prev.filter(e => e.id !== id));
+        showToast('Günlük kaydı silindi.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
     }
   };
 
@@ -1105,7 +1445,7 @@ export default function App() {
               )}
             </section>
           </>
-        ) : (
+        ) : activeTab === 'habits' ? (
           /* Habits View */
           <>
             {/* Dashboard Stat Cards */}
@@ -1188,6 +1528,74 @@ export default function App() {
               )}
             </section>
           </>
+        ) : activeTab === 'routines' ? (
+          <RoutinesDashboard 
+            routines={routines}
+            onSaveRoutine={saveRoutine}
+            onToggleRoutineComplete={toggleRoutineComplete}
+            onDeleteRoutine={deleteRoutine}
+            onStartRoutine={startRoutine}
+            onToggleStep={toggleStepComplete}
+          />
+        ) : activeTab === 'journal' ? (
+          <JournalDashboard 
+            entries={journalEntries}
+            onSaveEntry={saveJournalEntry}
+            onDeleteEntry={deleteJournalEntry}
+          />
+        ) : (
+          /* Milestones View */
+          <>
+            {/* Action Bar */}
+            <section className="action-bar-section">
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Kilometre Taşları & Başarımlar</h2>
+              </div>
+              <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
+                <Plus /> Yeni Başarım Ekle
+              </button>
+            </section>
+
+            {/* Milestones Display Grid */}
+            <section className="projects-grid-section">
+              {milestonesLoading ? (
+                <div className="loading-state">
+                  <div className="spinner"></div>
+                  <p>Başarımlar yükleniyor...</p>
+                </div>
+              ) : milestonesError ? (
+                <div className="empty-state">
+                  <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
+                  <h3>Bağlantı Hatası</h3>
+                  <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
+                  <button className="btn btn-secondary" onClick={() => fetchMilestones()}>
+                    <RefreshCw /> Tekrar Dene
+                  </button>
+                </div>
+              ) : milestones.length === 0 ? (
+                <div className="empty-state">
+                  <Trophy style={{ width: '56px', height: '56px' }} />
+                  <h3>Başarım Bulunamadı</h3>
+                  <p>Henüz hiçbir başarım/kilometre taşı eklemediniz.</p>
+                  <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
+                    <Plus /> İlk Başarımı Ekle
+                  </button>
+                </div>
+              ) : (
+                <div className="milestone-grid">
+                  {milestones.map((milestone) => (
+                    <MilestoneCard
+                      key={milestone.id}
+                      milestone={milestone}
+                      stats={milestoneStats}
+                      onUnlock={unlockMilestone}
+                      onDelete={deleteMilestone}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </main>
 
@@ -1225,6 +1633,13 @@ export default function App() {
           setSelectedHabit(null);
         }}
         onSaveHabit={saveHabit}
+      />
+
+      {/* Milestone Management Modal */}
+      <MilestoneModal
+        isOpen={isMilestoneModalOpen}
+        onClose={() => setIsMilestoneModalOpen(false)}
+        onSaveMilestone={saveMilestone}
       />
 
       {/* Toast Notifications */}

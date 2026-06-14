@@ -776,6 +776,355 @@ app.delete('/api/habits/:id', async (req, res) => {
   }
 });
 
+
+// === MILESTONES (BAŞARIMLAR) API ENDPOINTS ===
+
+// 1. GET ALL MILESTONES (with automatic unlocking evaluation)
+app.get('/api/milestones', async (req, res) => {
+  try {
+    // Get actual system statistics
+    const completedProjectsResult = await pool.query("SELECT COUNT(*) FROM projects WHERE status = 'completed'");
+    const completedGoalsResult = await pool.query("SELECT COUNT(*) FROM goals WHERE is_completed = true");
+    const maxStreakResult = await pool.query("SELECT COALESCE(MAX(streak_longest), 0) FROM habits");
+
+    const pCount = parseInt(completedProjectsResult.rows[0].count);
+    const gCount = parseInt(completedGoalsResult.rows[0].count);
+    const streakCount = parseInt(maxStreakResult.rows[0].coalesce);
+
+    // Auto-unlock achievements that meet their targets
+    await pool.query(`
+      UPDATE milestones 
+      SET is_unlocked = true, unlocked_at = CURRENT_TIMESTAMP 
+      WHERE is_unlocked = false AND (
+        (target_type = 'projects_completed' AND target_value <= $1) OR
+        (target_type = 'goals_achieved' AND target_value <= $2) OR
+        (target_type = 'habit_streak' AND target_value <= $3)
+      )
+    `, [pCount, gCount, streakCount]);
+
+    // Fetch all achievements
+    const { rows: milestones } = await pool.query(
+      'SELECT * FROM milestones ORDER BY is_unlocked DESC, unlocked_at DESC, created_at DESC'
+    );
+
+    res.json({
+      milestones,
+      stats: {
+        completedProjects: pCount,
+        completedGoals: gCount,
+        maxHabitStreak: streakCount
+      }
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving milestones' });
+  }
+});
+
+// 2. CREATE A NEW MILESTONE
+app.post('/api/milestones', async (req, res) => {
+  const { title, description, reward, target_type, target_value } = req.body;
+  try {
+    const query = `
+      INSERT INTO milestones (title, description, reward, target_type, target_value)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *;
+    `;
+    const values = [
+      title,
+      description || '',
+      reward || '',
+      target_type || 'manual',
+      parseInt(target_value) || 1
+    ];
+    const { rows } = await pool.query(query, values);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating milestone' });
+  }
+});
+
+// 3. MANUALLY UNLOCK A MILESTONE
+app.put('/api/milestones/:id/unlock', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const query = `
+      UPDATE milestones 
+      SET is_unlocked = true, unlocked_at = CURRENT_TIMESTAMP 
+      WHERE id = $1 AND is_unlocked = false 
+      RETURNING *;
+    `;
+    const { rows } = await pool.query(query, [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Milestone not found or already unlocked' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error unlocking milestone' });
+  }
+});
+
+// 4. DELETE A MILESTONE
+app.delete('/api/milestones/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM milestones WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Milestone not found' });
+    }
+    res.json({ message: 'Milestone deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting milestone' });
+  }
+});
+
+
+// === ROUTINES (RUTİNLER) API ENDPOINTS ===
+
+// 1. GET ALL ROUTINES
+app.get('/api/routines', async (req, res) => {
+  try {
+    const { rows: routines } = await pool.query('SELECT * FROM routines ORDER BY sort_order ASC, created_at DESC');
+    const { rows: steps } = await pool.query('SELECT * FROM routine_steps ORDER BY routine_id, sort_order ASC');
+    const { rows: completions } = await pool.query("SELECT routine_id FROM routine_completions WHERE completed_date = CURRENT_DATE");
+    const { rows: starts } = await pool.query("SELECT routine_id FROM routine_starts WHERE started_date = CURRENT_DATE");
+    const { rows: stepCompletions } = await pool.query("SELECT step_id FROM routine_step_completions WHERE completed_date = CURRENT_DATE");
+
+    const completionSet = new Set(completions.map(c => c.routine_id));
+    const startSet = new Set(starts.map(s => s.routine_id));
+    const stepCompletionSet = new Set(stepCompletions.map(sc => sc.step_id));
+
+    const routinesWithSteps = routines.map(r => {
+      const routineSteps = steps.filter(s => s.routine_id === r.id).map(step => ({
+        ...step,
+        is_completed_today: stepCompletionSet.has(step.id)
+      }));
+
+      return {
+        ...r,
+        steps: routineSteps,
+        is_completed_today: completionSet.has(r.id),
+        is_started_today: startSet.has(r.id)
+      };
+    });
+
+    res.json(routinesWithSteps);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving routines' });
+  }
+});
+
+// 2. CREATE A NEW ROUTINE
+app.post('/api/routines', async (req, res) => {
+  const { title, description, icon, steps } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: routineRows } = await client.query(
+      'INSERT INTO routines (title, description, icon) VALUES ($1, $2, $3) RETURNING *',
+      [title, description || '', icon || 'sun']
+    );
+    const routine = routineRows[0];
+    const insertedSteps = [];
+    if (Array.isArray(steps) && steps.length > 0) {
+      for (let i = 0; i < steps.length; i++) {
+        const stepTitle = typeof steps[i] === 'string' ? steps[i] : steps[i].title;
+        if (stepTitle && stepTitle.trim()) {
+          const { rows: stepRows } = await client.query(
+            'INSERT INTO routine_steps (routine_id, title, sort_order) VALUES ($1, $2, $3) RETURNING *',
+            [routine.id, stepTitle.trim(), i]
+          );
+          insertedSteps.push(stepRows[0]);
+        }
+      }
+    }
+    await client.query('COMMIT');
+    res.status(201).json({
+      ...routine,
+      steps: insertedSteps.map(s => ({ ...s, is_completed_today: false })),
+      is_completed_today: false,
+      is_started_today: false
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating routine' });
+  } finally {
+    client.release();
+  }
+});
+
+// 3. TOGGLE/COMPLETE ROUTINE FOR TODAY
+app.post('/api/routines/:id/complete', async (req, res) => {
+  const { id } = req.params;
+  const { is_completed } = req.body;
+  try {
+    if (is_completed) {
+      // Mark as started and completed today
+      await pool.query(
+        "INSERT INTO routine_starts (routine_id, started_date) VALUES ($1, CURRENT_DATE) ON CONFLICT (routine_id, started_date) DO NOTHING",
+        [id]
+      );
+      await pool.query(
+        "INSERT INTO routine_completions (routine_id, completed_date) VALUES ($1, CURRENT_DATE) ON CONFLICT (routine_id, completed_date) DO NOTHING",
+        [id]
+      );
+      
+      // Auto-complete all steps for today
+      const { rows: steps } = await pool.query("SELECT id FROM routine_steps WHERE routine_id = $1", [id]);
+      for (const step of steps) {
+        await pool.query(
+          "INSERT INTO routine_step_completions (step_id, completed_date) VALUES ($1, CURRENT_DATE) ON CONFLICT (step_id, completed_date) DO NOTHING",
+          [step.id]
+        );
+      }
+    } else {
+      await pool.query(
+        "DELETE FROM routine_completions WHERE routine_id = $1 AND completed_date = CURRENT_DATE",
+        [id]
+      );
+    }
+    res.json({ message: 'Routine status updated successfully', is_completed_today: is_completed });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating routine status' });
+  }
+});
+
+// 3.5 START/RESET ROUTINE FOR TODAY
+app.post('/api/routines/:id/start', async (req, res) => {
+  const { id } = req.params;
+  const { is_started } = req.body;
+  try {
+    if (is_started) {
+      await pool.query(
+        "INSERT INTO routine_starts (routine_id, started_date) VALUES ($1, CURRENT_DATE) ON CONFLICT (routine_id, started_date) DO NOTHING",
+        [id]
+      );
+    } else {
+      // Remove starts, completions and step completions
+      await pool.query(
+        "DELETE FROM routine_starts WHERE routine_id = $1 AND started_date = CURRENT_DATE",
+        [id]
+      );
+      await pool.query(
+        "DELETE FROM routine_completions WHERE routine_id = $1 AND completed_date = CURRENT_DATE",
+        [id]
+      );
+      
+      const { rows: steps } = await pool.query("SELECT id FROM routine_steps WHERE routine_id = $1", [id]);
+      const stepIds = steps.map(s => s.id);
+      if (stepIds.length > 0) {
+        await pool.query(
+          "DELETE FROM routine_step_completions WHERE step_id = ANY($1) AND completed_date = CURRENT_DATE",
+          [stepIds]
+        );
+      }
+    }
+    res.json({ message: 'Routine start status updated', is_started_today: is_started });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating routine start status' });
+  }
+});
+
+// 3.8 TOGGLE STEP COMPLETION FOR TODAY
+app.post('/api/routines/steps/:stepId/complete', async (req, res) => {
+  const { stepId } = req.params;
+  const { is_completed } = req.body;
+  try {
+    if (is_completed) {
+      await pool.query(
+        "INSERT INTO routine_step_completions (step_id, completed_date) VALUES ($1, CURRENT_DATE) ON CONFLICT (step_id, completed_date) DO NOTHING",
+        [stepId]
+      );
+    } else {
+      await pool.query(
+        "DELETE FROM routine_step_completions WHERE step_id = $1 AND completed_date = CURRENT_DATE",
+        [stepId]
+      );
+    }
+    res.json({ message: 'Step completion status updated', is_completed_today: is_completed });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating step status' });
+  }
+});
+
+// 4. DELETE A ROUTINE
+app.delete('/api/routines/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM routines WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Routine not found' });
+    }
+    res.json({ message: 'Routine deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting routine' });
+  }
+});
+
+
+// === JOURNAL & MOOD (GÜNLÜK & DUYGU TAKİBİ) API ENDPOINTS ===
+
+// 1. GET ALL JOURNAL ENTRIES
+app.get('/api/journal', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM journal_entries ORDER BY entry_date DESC');
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving journal entries' });
+  }
+});
+
+// 2. CREATE/UPDATE A JOURNAL ENTRY (ON CONFLICT DO UPDATE)
+app.post('/api/journal', async (req, res) => {
+  const { entry_date, mood_rating, content, tags } = req.body;
+  try {
+    const query = `
+      INSERT INTO journal_entries (entry_date, mood_rating, content, tags)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (entry_date)
+      DO UPDATE SET mood_rating = $2, content = $3, tags = $4
+      RETURNING *;
+    `;
+    const values = [
+      entry_date || new Date().toISOString().split('T')[0],
+      mood_rating !== undefined ? parseInt(mood_rating) : null,
+      content || '',
+      tags || []
+    ];
+    const { rows } = await pool.query(query, values);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error saving journal entry' });
+  }
+});
+
+// 3. DELETE A JOURNAL ENTRY
+app.delete('/api/journal/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM journal_entries WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    res.json({ message: 'Journal entry deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting journal entry' });
+  }
+});
+
+
 // Serve the frontend app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
