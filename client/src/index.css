@@ -904,6 +904,11 @@ body {
   background: rgba(244, 63, 94, 0.1);
 }
 
+.btn-card-action.add:hover {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
 /* Loading & Empty States */
 .loading-state, .empty-state {
   grid-column: 1 / -1;

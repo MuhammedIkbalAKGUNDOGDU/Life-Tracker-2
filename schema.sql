@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS finance_assets (
     asset_type VARCHAR(50) NOT NULL, -- gold, stock, crypto, fund, cash
     ticker VARCHAR(50) NOT NULL,     -- GRAM, BTC, THYAO, MAC, USD vb.
     amount NUMERIC(16, 6) DEFAULT 0.000000,
-    cost_price NUMERIC(16, 2) DEFAULT 0.00,
+    cost_price NUMERIC(20, 8) DEFAULT 0.00000000,
     asset_currency VARCHAR(10) DEFAULT 'TRY', -- TRY, USD, EUR
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

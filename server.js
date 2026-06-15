@@ -1154,35 +1154,143 @@ const fetchYahooPrice = async (symbol) => {
   }
 };
 
+// Helper: ALTIN.S1 Gold Certificate BIST price fetcher from Doviz.com
+const fetchAltinS1Price = async () => {
+  try {
+    const url = 'https://borsa.doviz.com/hisseler';
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+      }
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    
+    // Find the row for ALTINS1
+    const idx = html.indexOf('id="ALTINS1"');
+    if (idx === -1) return null;
+    
+    // Extract the section after id="ALTINS1"
+    const sub = html.substring(idx, idx + 1000);
+    // Find the first td value: e.g. <td class="text-bold">77,43</td>
+    const match = sub.match(/<td[^>]*class="text-bold"[^>]*>\s*([0-9.,]+)\s*<\/td>/i);
+    if (match) {
+      const valStr = match[1].replace(/\./g, '').replace(',', '.');
+      const val = parseFloat(valStr);
+      if (!isNaN(val)) {
+        let changePercent = 0;
+        const changeMatch = sub.match(/<td[^>]*class="[^"]*(?:color-up|color-down)[^"]*"[^>]*>\s*([^\s<]+)\s*<\/td>/i);
+        if (changeMatch) {
+          const changeStr = changeMatch[1].replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+          changePercent = parseFloat(changeStr) || 0;
+        }
+        return { price: val, changePercent };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('Error fetching ALTIN.S1 price from Doviz:', e.message);
+    return null;
+  }
+};
+
 // Helper: TEFAS Fund profiles fetcher
 const fetchTefasPrices = async () => {
-  try {
-    const url = 'https://www.tefas.gov.tr/api/v1/Asset/GetFundProfileListData';
+  const getTurkeyDate = (offsetDays = 0) => {
+    const d = new Date(Date.now() + 3 * 60 * 60 * 1000 - offsetDays * 24 * 60 * 60 * 1000);
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${year}${month}${day}`;
+  };
+
+  const fetchForKindAndDate = async (kind, dateStr) => {
+    const url = 'https://www.tefas.gov.tr/api/funds/fonGnlBlgSiraliGetir';
+    const payload = {
+      "fonTipi": kind,
+      "fonKodu": null,
+      "aramaMetni": null,
+      "fonTurKod": null,
+      "fonGrubu": null,
+      "sfonTurKod": null,
+      "fonTurAciklama": null,
+      "kurucuKod": null,
+      "basTarih": dateStr,
+      "bitTarih": dateStr,
+      "basSira": 1,
+      "bitSira": 100000,
+      "dil": "TR",
+      "sFonTurKod": "",
+      "fonKod": "",
+      "fonGrup": "",
+      "fonUnvanTip": ""
+    };
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'X-Requested-With': 'XMLHttpRequest'
+        'Accept': '*/*',
+        'Content-Type': 'application/json',
+        'Origin': 'https://www.tefas.gov.tr',
+        'Referer': 'https://www.tefas.gov.tr/tr/fon-verileri',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
       },
-      body: new URLSearchParams({
-        'draw': '1',
-        'start': '0',
-        'length': '1500' // Fetch up to 1500 funds
-      })
+      body: JSON.stringify(payload)
     });
-    if (!response.ok) return {};
+
+    if (!response.ok) return null;
     const data = await response.json();
+    return data && data.resultList ? data.resultList : null;
+  };
+
+  try {
+    let workingDate = null;
+    let yatList = null;
+
+    // Try to find a working date for YAT by going backwards up to 7 days
+    for (let i = 0; i < 7; i++) {
+      const dateStr = getTurkeyDate(i);
+      const list = await fetchForKindAndDate('YAT', dateStr);
+      if (list && list.length > 0) {
+        workingDate = dateStr;
+        yatList = list;
+        break;
+      }
+      // Delay slightly between attempts to respect API rate limits
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    if (!workingDate || !yatList) {
+      console.error('Failed to retrieve TEFAS YAT data for the last 7 days.');
+      return {};
+    }
+
+    // Fetch EMK (Pension Funds) for the same working date
+    let emkList = [];
+    try {
+      const list = await fetchForKindAndDate('EMK', workingDate);
+      if (list && list.length > 0) {
+        emkList = list;
+      }
+    } catch (e) {
+      console.error(`Error fetching EMK funds:`, e.message);
+    }
+
+    // Process and merge both lists
     const fundPrices = {};
-    if (data?.data && Array.isArray(data.data)) {
-      data.data.forEach(fund => {
-        const code = fund.FundCode;
-        const price = parseFloat(fund.Price);
+    const processList = (list) => {
+      list.forEach(fund => {
+        const code = fund.fonKodu;
+        const price = parseFloat(fund.fiyat);
         if (code && !isNaN(price)) {
           fundPrices[code.toUpperCase()] = price;
         }
       });
-    }
+    };
+
+    processList(yatList);
+    processList(emkList);
+
     return fundPrices;
   } catch (err) {
     console.error('Error fetching TEFAS prices:', err.message);
@@ -1270,35 +1378,60 @@ app.get('/api/finance/prices', async (req, res) => {
         if (!predefinedTickers.has(ticker) && type !== 'cash' && type !== 'fund') {
           let symbol = ticker;
           if (type === 'stock') {
-            symbol = `${ticker}.IS`;
+            symbol = ticker.endsWith('.IS') ? ticker : `${ticker}.IS`;
           } else if (type === 'crypto') {
-            symbol = `${ticker}-USD`;
+            symbol = ticker.endsWith('-USD') ? ticker : `${ticker}-USD`;
           } else if (type === 'gold' && ticker === 'ONS') {
             symbol = 'GC=F';
           }
           
-          const yahooData = await fetchYahooPrice(symbol);
-          if (yahooData) {
-            let tryVal, usdVal, eurVal;
-            if (type === 'stock') {
-              tryVal = yahooData.price;
-              usdVal = tryVal / usdTry;
-              eurVal = tryVal / eurTry;
-            } else if (type === 'crypto') {
-              usdVal = yahooData.price;
-              tryVal = usdVal * usdTry;
-              eurVal = usdVal / eurUsdData.price;
+          let tryVal, usdVal, eurVal, changePercent;
+          let found = false;
+
+          const normalizedTicker = ticker.replace('.IS', '').trim();
+          if (normalizedTicker === 'ALTIN.S1' || normalizedTicker === 'ALTINS1' || normalizedTicker === 'ALTIN_S1') {
+            // First, attempt to fetch the actual market price from Doviz.com
+            const altinS1Market = await fetchAltinS1Price();
+            if (altinS1Market && altinS1Market.price > 0) {
+              tryVal = altinS1Market.price;
+              changePercent = altinS1Market.changePercent;
+              console.log(`Successfully fetched real BIST market price for ALTIN.S1: ${tryVal} TRY (Change: ${changePercent}%)`);
             } else {
-              tryVal = yahooData.price;
-              usdVal = tryVal / usdTry;
-              eurVal = tryVal / eurTry;
+              // Fallback to Gram Gold / 100 spot price if the scraper fails
+              tryVal = gramGoldPrice / 100;
+              changePercent = gramGoldChange;
+              console.log(`Failed to fetch real market price for ALTIN.S1, falling back to spot gold price: ${tryVal} TRY`);
             }
-            
+            usdVal = tryVal / usdTry;
+            eurVal = tryVal / eurTry;
+            found = true;
+          } else {
+            const yahooData = await fetchYahooPrice(symbol);
+            if (yahooData) {
+              changePercent = yahooData.changePercent;
+              if (type === 'stock') {
+                tryVal = yahooData.price;
+                usdVal = tryVal / usdTry;
+                eurVal = tryVal / eurTry;
+              } else if (type === 'crypto') {
+                usdVal = yahooData.price;
+                tryVal = usdVal * usdTry;
+                eurVal = usdVal / eurUsdData.price;
+              } else {
+                tryVal = yahooData.price;
+                usdVal = tryVal / usdTry;
+                eurVal = tryVal / eurTry;
+              }
+              found = true;
+            }
+          }
+
+          if (found) {
             prices[ticker] = {
               TRY: tryVal,
               USD: usdVal,
               EUR: eurVal,
-              changePercent: yahooData.changePercent
+              changePercent: changePercent
             };
           }
         }

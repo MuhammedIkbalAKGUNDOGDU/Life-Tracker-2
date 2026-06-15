@@ -36,6 +36,7 @@ export default function FinanceDashboard({
   const [displayCurrency, setDisplayCurrency] = useState('TRY');
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hide_finance_balances') === 'true');
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  const [isAddingToAsset, setIsAddingToAsset] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('hide_finance_balances', hideBalances);
@@ -47,6 +48,25 @@ export default function FinanceDashboard({
   const [amount, setAmount] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [assetCurrency, setAssetCurrency] = useState('TRY');
+
+  const handleOpenAddAssetModal = (existingAsset = null) => {
+    if (existingAsset) {
+      setIsAddingToAsset(existingAsset);
+      setAssetType(existingAsset.asset_type);
+      setTicker(existingAsset.ticker);
+      setAssetCurrency(existingAsset.asset_currency || 'TRY');
+      setAmount('');
+      setCostPrice('');
+    } else {
+      setIsAddingToAsset(null);
+      setAssetType('gold');
+      setTicker('GRAM_GOLD');
+      setAssetCurrency('TRY');
+      setAmount('');
+      setCostPrice('');
+    }
+    setIsAssetModalOpen(true);
+  };
 
   // Ledger Filter State - Default to current month/year
   const today = new Date();
@@ -131,17 +151,32 @@ export default function FinanceDashboard({
       return activePrices[upper];
     }
 
+    // Try normalization checks for suffix variations
+    const normalized = upper.replace('.IS', '').replace('-USD', '').trim();
+    if (activePrices[normalized]) {
+      return activePrices[normalized];
+    }
+    if (activePrices[`${normalized}.IS`]) {
+      return activePrices[`${normalized}.IS`];
+    }
+    if (activePrices[`${normalized}-USD`]) {
+      return activePrices[`${normalized}-USD`];
+    }
+
     // Check TEFAS funds
-    if (type === 'fund' && activePrices.TEFAS && activePrices.TEFAS[upper]) {
-      const fundTry = activePrices.TEFAS[upper];
-      const usdTry = activePrices.USD.TRY;
-      const eurTry = activePrices.EUR.TRY;
-      return {
-        TRY: fundTry,
-        USD: fundTry / usdTry,
-        EUR: fundTry / eurTry,
-        changePercent: 0
-      };
+    if (type === 'fund' && activePrices.TEFAS) {
+      const fundPrice = activePrices.TEFAS[upper] || activePrices.TEFAS[normalized];
+      if (fundPrice) {
+        const fundTry = fundPrice;
+        const usdTry = activePrices.USD.TRY;
+        const eurTry = activePrices.EUR.TRY;
+        return {
+          TRY: fundTry,
+          USD: fundTry / usdTry,
+          EUR: fundTry / eurTry,
+          changePercent: 0
+        };
+      }
     }
 
     // Cash matching
@@ -535,7 +570,7 @@ export default function FinanceDashboard({
         <div className="glass-card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Varlık Portföyüm</h3>
-            <button className="btn btn-primary" onClick={() => setIsAssetModalOpen(true)} style={{ padding: '6px 12px', fontSize: '12px' }}>
+            <button className="btn btn-primary" onClick={() => handleOpenAddAssetModal(null)} style={{ padding: '6px 12px', fontSize: '12px' }}>
               <Plus size={14} /> Varlık Ekle
             </button>
           </div>
@@ -567,13 +602,22 @@ export default function FinanceDashboard({
                       </div>
                       <div>
                         <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>{asset.ticker}</h4>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {hideBalances ? '**** adet @ ****' : `${amountFloat} adet @ ${displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : ''}${costPriceDisplay.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`}
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                          {hideBalances ? '**** adet @ **** (Güncel: ****)' : (
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span>
+                                {amountFloat} adet @ {displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : ''}{costPriceDisplay.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
+                              </span>
+                              <span style={{ opacity: 0.85, color: 'var(--text-light)', fontSize: '10px' }}>
+                                Güncel: {displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : ''}{currentPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
+                              </span>
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: 'auto' }}>
                       <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{formatMoney(totalValue)}</span>
                       <span style={{ fontSize: '11px', color: assetPL >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
                         {assetPL >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
@@ -581,14 +625,24 @@ export default function FinanceDashboard({
                       </span>
                     </div>
 
-                    <button 
-                      className="btn-card-action delete"
-                      onClick={() => onDeleteAsset(asset.id)}
-                      title="Varlığı Sil"
-                      style={{ padding: '4px' }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button 
+                        className="btn-card-action add"
+                        onClick={() => handleOpenAddAssetModal(asset)}
+                        title="Bu Varlığa Ekle (Ortalama Maliyet Hesapla)"
+                        style={{ padding: '4px' }}
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button 
+                        className="btn-card-action delete"
+                        onClick={() => onDeleteAsset(asset.id)}
+                        title="Varlığı Sil"
+                        style={{ padding: '4px' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -828,7 +882,7 @@ export default function FinanceDashboard({
         <div className="modal-backdrop open">
           <div className="modal glass-card" style={{ maxWidth: '450px' }}>
             <div className="modal-header">
-              <h2>Portföye Varlık Ekle</h2>
+              <h2>{isAddingToAsset ? `${isAddingToAsset.ticker} Alım Yap / Ekle` : 'Portföye Varlık Ekle'}</h2>
               <button className="btn-close" onClick={() => setIsAssetModalOpen(false)}>
                 <X />
               </button>
@@ -840,6 +894,7 @@ export default function FinanceDashboard({
                   <label>Varlık Türü</label>
                   <select 
                     value={assetType} 
+                    disabled={!!isAddingToAsset}
                     onChange={(e) => {
                       const val = e.target.value;
                       setAssetType(val);
@@ -861,13 +916,13 @@ export default function FinanceDashboard({
                 <div className="form-group">
                   <label>Varlık Kodu / Ticker</label>
                   {assetType === 'gold' ? (
-                    <select value={ticker} onChange={(e) => setTicker(e.target.value)}>
+                    <select value={ticker} disabled={!!isAddingToAsset} onChange={(e) => setTicker(e.target.value)}>
                       <option value="GRAM_GOLD">Gram Altın (GRAM_GOLD)</option>
                       <option value="CEYREK_GOLD">Çeyrek Altın (CEYREK_GOLD)</option>
                       <option value="ONS_GOLD">Ons Altın (ONS_GOLD)</option>
                     </select>
                   ) : assetType === 'cash' ? (
-                    <select value={ticker} onChange={(e) => setTicker(e.target.value)}>
+                    <select value={ticker} disabled={!!isAddingToAsset} onChange={(e) => setTicker(e.target.value)}>
                       <option value="USD">Amerikan Doları (USD)</option>
                       <option value="EUR">Euro (EUR)</option>
                     </select>
@@ -875,6 +930,7 @@ export default function FinanceDashboard({
                     <input 
                       type="text" 
                       value={ticker} 
+                      disabled={!!isAddingToAsset}
                       onChange={(e) => setTicker(e.target.value)} 
                       required 
                       placeholder={assetType === 'stock' ? 'Örn: THYAO, ASELS, SASA' : assetType === 'fund' ? 'Örn: MAC, TCD, TI1' : 'Örn: BTC, ETH, SOL'}
@@ -898,7 +954,7 @@ export default function FinanceDashboard({
                   <label>Alış Maliyeti (Birim Başına)</label>
                   <input 
                     type="number" 
-                    step="0.01" 
+                    step="0.00000001" 
                     value={costPrice} 
                     onChange={(e) => setCostPrice(e.target.value)} 
                     required 
@@ -908,7 +964,7 @@ export default function FinanceDashboard({
 
                 <div className="form-group">
                   <label>Maliyet Para Birimi</label>
-                  <select value={assetCurrency} onChange={(e) => setAssetCurrency(e.target.value)}>
+                  <select value={assetCurrency} disabled={!!isAddingToAsset} onChange={(e) => setAssetCurrency(e.target.value)}>
                     <option value="TRY">TL (TRY)</option>
                     <option value="USD">Dolar (USD)</option>
                     <option value="EUR">Euro (EUR)</option>
@@ -918,7 +974,7 @@ export default function FinanceDashboard({
 
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setIsAssetModalOpen(false)}>Vazgeç</button>
-                <button type="submit" className="btn btn-primary">Portföye Ekle</button>
+                <button type="submit" className="btn btn-primary">{isAddingToAsset ? 'Alım Yap' : 'Portföye Ekle'}</button>
               </div>
             </form>
           </div>
