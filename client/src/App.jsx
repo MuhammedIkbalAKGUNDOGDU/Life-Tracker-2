@@ -130,6 +130,7 @@ export default function App() {
   const [milestonesError, setMilestonesError] = useState(false);
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
   const [isMilestoneAnalyticsOpen, setIsMilestoneAnalyticsOpen] = useState(false);
+  const [milestoneToUnlock, setMilestoneToUnlock] = useState(null);
 
   // Routines States
   const [routines, setRoutines] = useState([]);
@@ -1783,7 +1784,7 @@ export default function App() {
                           key={milestone.id}
                           milestone={milestone}
                           stats={milestoneStats}
-                          onUnlock={unlockMilestone}
+                          onUnlock={setMilestoneToUnlock}
                           onDelete={deleteMilestone}
                         />
                       ))}
@@ -1846,6 +1847,40 @@ export default function App() {
         onClose={() => setIsMilestoneModalOpen(false)}
         onSaveMilestone={saveMilestone}
       />
+
+      {/* Milestone Unlock Confirmation Modal */}
+      {milestoneToUnlock && (
+        <div className="modal-backdrop open">
+          <div className="modal glass-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px', color: 'var(--primary)' }}>
+              <Trophy size={48} className="pulse-priority" />
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>Başarım Kilidi Açılsın mı?</h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: 1.5 }}>
+              <strong>"{milestoneToUnlock.title}"</strong> başarımının kilidini manuel olarak açmak istediğinize emin misiniz?
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setMilestoneToUnlock(null)}
+                style={{ flex: 1 }}
+              >
+                Vazgeç
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  unlockMilestone(milestoneToUnlock.id);
+                  setMilestoneToUnlock(null);
+                }}
+                style={{ flex: 1 }}
+              >
+                Kilidi Aç
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notifications */}
       <div className="toast-container">
