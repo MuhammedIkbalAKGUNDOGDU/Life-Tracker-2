@@ -275,20 +275,21 @@ app.get('/api/goals', async (req, res) => {
 
 // 2. CREATE A NEW GOAL
 app.post('/api/goals', async (req, res) => {
-  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, link_url } = req.body;
+  const { title, why_note, description, category, target_date, priority, progress_type, current_value, target_value, unit, link_url } = req.body;
   try {
     const isCompleted = progress_type === 'metric' 
       ? (parseFloat(current_value) >= parseFloat(target_value)) 
       : false;
       
     const query = `
-      INSERT INTO goals (title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      INSERT INTO goals (title, why_note, description, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
     `;
     const values = [
       title,
       why_note || '',
+      description || '',
       category || 'general',
       target_date || null,
       parseInt(priority) || 3,
@@ -365,7 +366,7 @@ app.put('/api/goals/:id/increment', async (req, res) => {
 // 5. UPDATE GOAL DETAILS
 app.put('/api/goals/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, why_note, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url } = req.body;
+  const { title, why_note, description, category, target_date, priority, progress_type, current_value, target_value, unit, is_completed, link_url } = req.body;
   try {
     const getGoal = await pool.query('SELECT * FROM goals WHERE id = $1', [id]);
     if (getGoal.rows.length === 0) {
@@ -375,6 +376,7 @@ app.put('/api/goals/:id', async (req, res) => {
     const currentGoal = getGoal.rows[0];
     const newTitle = title !== undefined ? title : currentGoal.title;
     const newWhy = why_note !== undefined ? why_note : currentGoal.why_note;
+    const newDescription = description !== undefined ? description : currentGoal.description;
     const newCategory = category !== undefined ? category : currentGoal.category;
     const newTargetDate = target_date !== undefined ? target_date : currentGoal.target_date;
     const newPriority = priority !== undefined ? parseInt(priority) : currentGoal.priority;
@@ -390,11 +392,11 @@ app.put('/api/goals/:id', async (req, res) => {
 
     const query = `
       UPDATE goals
-      SET title = $1, why_note = $2, category = $3, target_date = $4, priority = $5, progress_type = $6, current_value = $7, target_value = $8, unit = $9, is_completed = $10, link_url = $11, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $12
+      SET title = $1, why_note = $2, category = $3, target_date = $4, priority = $5, progress_type = $6, current_value = $7, target_value = $8, unit = $9, is_completed = $10, link_url = $11, description = $12, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $13
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [newTitle, newWhy, newCategory, newTargetDate, newPriority, newProgressType, newCurrentValue, newTargetValue, newUnit, isCompleted, newLink, id]);
+    const { rows } = await pool.query(query, [newTitle, newWhy, newCategory, newTargetDate, newPriority, newProgressType, newCurrentValue, newTargetValue, newUnit, isCompleted, newLink, newDescription, id]);
     res.json(rows[0]);
   } catch (err) {
     console.error(err.message);

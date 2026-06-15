@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS goals (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     why_note TEXT DEFAULT '',
+    description TEXT DEFAULT '',
     category VARCHAR(100) DEFAULT 'general', -- health, career, finance, education, social, general
     target_date DATE,
     priority INTEGER DEFAULT 3 CHECK (priority >= 1 AND priority <= 5),

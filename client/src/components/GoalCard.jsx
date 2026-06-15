@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { 
   Briefcase, 
   Heart, 
@@ -181,6 +181,19 @@ export default function GoalCard({
               <span>Neden: "{goal.why_note}"</span>
             </p>
           )}
+          {goal.description && (
+            <p style={{ 
+              fontSize: '12px', 
+              color: 'var(--text-muted)', 
+              margin: '4px 0 0 0', 
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              opacity: 0.95
+            }} title={goal.description}>
+              {goal.description}
+            </p>
+          )}
         </div>
 
         {/* Center-Right: Badges (Category, Priority, Countdown) */}
@@ -297,6 +310,18 @@ export default function GoalCard({
           <p style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
             <Flame size={13} style={{ color: 'var(--warning)', marginTop: '2px', flexShrink: 0 }} />
             <span>Neden: "{goal.why_note}"</span>
+          </p>
+        )}
+        {goal.description && (
+          <p style={{ 
+            fontSize: '13px', 
+            color: 'var(--text-main)', 
+            opacity: 0.85, 
+            marginBottom: '10px', 
+            whiteSpace: 'pre-line',
+            lineHeight: 1.4
+          }}>
+            {goal.description}
           </p>
         )}
       </div>

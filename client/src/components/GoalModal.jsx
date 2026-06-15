@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Flame, Target } from 'lucide-react';
 
 export default function GoalModal({
@@ -9,6 +9,7 @@ export default function GoalModal({
 }) {
   const [title, setTitle] = useState('');
   const [whyNote, setWhyNote] = useState('');
+  const [description, setDescription] = useState('');
   const [category, setCategory] = useState('general');
   const [customCategory, setCustomCategory] = useState('');
   const [targetDate, setTargetDate] = useState('');
@@ -22,10 +23,12 @@ export default function GoalModal({
   const [unit, setUnit] = useState('');
 
   // Sync state with selected goal when modal opens
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (goal) {
       setTitle(goal.title || '');
       setWhyNote(goal.why_note || '');
+      setDescription(goal.description || '');
       const cat = goal.category || 'general';
       if (['health', 'career', 'finance', 'education', 'social', 'general'].includes(cat)) {
         setCategory(cat);
@@ -44,6 +47,7 @@ export default function GoalModal({
     } else {
       setTitle('');
       setWhyNote('');
+      setDescription('');
       setCategory('general');
       setCustomCategory('');
       setTargetDate('');
@@ -55,6 +59,7 @@ export default function GoalModal({
       setUnit('');
     }
   }, [goal, isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!isOpen) return null;
 
@@ -66,6 +71,7 @@ export default function GoalModal({
       id: goal ? goal.id : null,
       title: title.trim(),
       why_note: whyNote.trim(),
+      description: description.trim(),
       category: category === 'other' ? (customCategory.trim() || 'Diğer') : category,
       target_date: targetDate || null,
       priority: parseInt(priority) || 3,
@@ -110,6 +116,18 @@ export default function GoalModal({
                 onChange={(e) => setWhyNote(e.target.value)}
                 rows="2"
                 placeholder="Bu hedefe ulaştığında ne hissedeceksin? İtici gücünü yaz..."
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="label-with-icon">
+                <Target size={14} style={{ color: 'var(--primary)' }} /> Açıklama / Hedef Detayları
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows="3"
+                placeholder="Hedefin ayrıntılarını, neyi nasıl yapacağını açıklayın..."
               />
             </div>
 
