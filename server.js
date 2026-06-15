@@ -1146,6 +1146,7 @@ const fetchYahooPrice = async (symbol) => {
     const prevClose = meta.chartPreviousClose || currentPrice;
     return {
       price: currentPrice,
+      currency: meta.currency,
       changePercent: ((currentPrice - prevClose) / prevClose) * 100
     };
   } catch (err) {
@@ -1376,15 +1377,6 @@ app.get('/api/finance/prices', async (req, res) => {
         const type = asset.asset_type.toLowerCase();
         
         if (!predefinedTickers.has(ticker) && type !== 'cash' && type !== 'fund') {
-          let symbol = ticker;
-          if (type === 'stock') {
-            symbol = ticker.endsWith('.IS') ? ticker : `${ticker}.IS`;
-          } else if (type === 'crypto') {
-            symbol = ticker.endsWith('-USD') ? ticker : `${ticker}-USD`;
-          } else if (type === 'gold' && ticker === 'ONS') {
-            symbol = 'GC=F';
-          }
-          
           let tryVal, usdVal, eurVal, changePercent;
           let found = false;
 
@@ -1406,21 +1398,44 @@ app.get('/api/finance/prices', async (req, res) => {
             eurVal = tryVal / eurTry;
             found = true;
           } else {
-            const yahooData = await fetchYahooPrice(symbol);
+            let yahooData = null;
+            if (type === 'stock') {
+              if (ticker.endsWith('.IS')) {
+                yahooData = await fetchYahooPrice(ticker);
+              } else {
+                // Try ticker directly first (e.g. AAPL, MSFT)
+                yahooData = await fetchYahooPrice(ticker);
+                if (!yahooData) {
+                  // Fallback to BIST suffix (e.g. THYAO -> THYAO.IS)
+                  yahooData = await fetchYahooPrice(`${ticker}.IS`);
+                }
+              }
+            } else {
+              let symbol = ticker;
+              if (type === 'crypto') {
+                symbol = ticker.endsWith('-USD') ? ticker : `${ticker}-USD`;
+              } else if (type === 'gold' && ticker === 'ONS') {
+                symbol = 'GC=F';
+              }
+              yahooData = await fetchYahooPrice(symbol);
+            }
+
             if (yahooData) {
               changePercent = yahooData.changePercent;
-              if (type === 'stock') {
+              const yahooCurrency = (yahooData.currency || (type === 'crypto' ? 'USD' : 'TRY')).toUpperCase();
+              
+              if (yahooCurrency === 'TRY') {
                 tryVal = yahooData.price;
                 usdVal = tryVal / usdTry;
                 eurVal = tryVal / eurTry;
-              } else if (type === 'crypto') {
+              } else if (yahooCurrency === 'EUR') {
+                eurVal = yahooData.price;
+                tryVal = eurVal * eurTry;
+                usdVal = tryVal / usdTry;
+              } else { // Default to USD (US stocks, cryptos, etc.)
                 usdVal = yahooData.price;
                 tryVal = usdVal * usdTry;
                 eurVal = usdVal / eurUsdData.price;
-              } else {
-                tryVal = yahooData.price;
-                usdVal = tryVal / usdTry;
-                eurVal = tryVal / eurTry;
               }
               found = true;
             }
