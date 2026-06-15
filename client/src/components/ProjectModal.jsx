@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, Check, Trash2, StickyNote, User } from 'lucide-react';
 
 export default function ProjectModal({
@@ -23,6 +23,7 @@ export default function ProjectModal({
   const [taskPrice, setTaskPrice] = useState(0);
 
   // Sync state with selected project when modal opens
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (project) {
       setTitle(project.title || '');
@@ -43,6 +44,7 @@ export default function ProjectModal({
     setTaskWeight(1);
     setTaskPrice(0);
   }, [project, isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!isOpen) return null;
 
@@ -151,6 +153,7 @@ export default function ProjectModal({
                 <div className="form-group">
                   <label>Durum</label>
                   <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option value="draft">Taslak</option>
                     <option value="not_started">Başlanmadı</option>
                     <option value="in_progress">Devam Ediyor</option>
                     <option value="on_hold">Ertelendi</option>

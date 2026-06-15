@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import KPIStats from './components/KPIStats';
 import ProjectCard from './components/ProjectCard';
@@ -40,7 +40,8 @@ import {
   BookOpen,
   Sparkles,
   Lock,
-  Coins
+  Coins,
+  FileText
 } from 'lucide-react';
 
 export default function App() {
@@ -1338,6 +1339,12 @@ export default function App() {
                     onClick={() => setCurrentFilter('all')}
                   >
                     <Layers /> Hepsi
+                  </button>
+                  <button 
+                    className={`filter-btn ${currentFilter === 'draft' ? 'active' : ''}`}
+                    onClick={() => setCurrentFilter('draft')}
+                  >
+                    <FileText /> Taslaklar
                   </button>
                   <button 
                     className={`filter-btn ${currentFilter === 'not_started' ? 'active' : ''}`}

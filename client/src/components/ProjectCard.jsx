@@ -1,8 +1,8 @@
-import React from 'react';
 import { CheckSquare, Edit3, Trash2, User } from 'lucide-react';
 
 const getStatusLabel = (status) => {
   switch (status) {
+    case 'draft': return 'Taslak';
     case 'not_started': return 'Başlanmadı';
     case 'in_progress': return 'Devam Ediyor';
     case 'on_hold': return 'Ertelendi';

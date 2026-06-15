@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS projects (
     notes TEXT DEFAULT '',
     client VARCHAR(255) DEFAULT '',
     type VARCHAR(50) DEFAULT 'personal', -- 'personal' or 'external'
-    status VARCHAR(50) DEFAULT 'not_started', -- 'not_started', 'in_progress', 'completed', 'on_hold'
+    status VARCHAR(50) DEFAULT 'not_started', -- 'draft', 'not_started', 'in_progress', 'completed', 'on_hold'
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

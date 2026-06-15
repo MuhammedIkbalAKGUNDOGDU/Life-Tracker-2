@@ -1,4 +1,3 @@
-import React from 'react';
 import { FolderKanban, User, Briefcase, TrendingUp } from 'lucide-react';
 
 export default function KPIStats({ projects = [] }) {

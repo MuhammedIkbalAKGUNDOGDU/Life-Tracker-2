@@ -17,7 +17,9 @@ import {
   Utensils,
   Car,
   FileText,
-  Briefcase
+  Briefcase,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export default function FinanceDashboard({
@@ -32,7 +34,12 @@ export default function FinanceDashboard({
   onRefreshPrices
 }) {
   const [displayCurrency, setDisplayCurrency] = useState('TRY');
+  const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hide_finance_balances') === 'true');
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('hide_finance_balances', hideBalances);
+  }, [hideBalances]);
 
   // Asset Form State
   const [assetType, setAssetType] = useState('gold');
@@ -276,6 +283,7 @@ export default function FinanceDashboard({
   };
 
   const formatMoney = (val) => {
+    if (hideBalances) return '****';
     const prefix = displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : '';
     const suffix = displayCurrency === 'TRY' ? ' TL' : '';
     return `${prefix}${val.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
@@ -436,20 +444,31 @@ export default function FinanceDashboard({
       <section className="action-bar-section" style={{ marginBottom: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Finansal Durum & Yatırımlar</h2>
         
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Görünüm Para Birimi:</span>
-          <div className="filters glass-card" style={{ display: 'flex', padding: '4px', gap: '4px' }}>
-            {['TRY', 'USD', 'EUR'].map(cur => (
-              <button 
-                key={cur}
-                className={`filter-btn ${displayCurrency === cur ? 'active' : ''}`}
-                onClick={() => setDisplayCurrency(cur)}
-                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-              >
-                {cur}
-              </button>
-            ))}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Görünüm Para Birimi:</span>
+            <div className="filters glass-card" style={{ display: 'flex', padding: '4px', gap: '4px' }}>
+              {['TRY', 'USD', 'EUR'].map(cur => (
+                <button 
+                  key={cur}
+                  className={`filter-btn ${displayCurrency === cur ? 'active' : ''}`}
+                  onClick={() => setDisplayCurrency(cur)}
+                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                >
+                  {cur}
+                </button>
+              ))}
+            </div>
           </div>
+
+          <button
+            onClick={() => setHideBalances(!hideBalances)}
+            className="btn btn-secondary btn-icon-only"
+            title={hideBalances ? "Bakiyeleri Göster" : "Bakiyeleri Gizle"}
+            style={{ width: '32px', height: '32px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+          >
+            {hideBalances ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
         </div>
       </section>
 
@@ -501,10 +520,10 @@ export default function FinanceDashboard({
               </div>
             </div>
             <div className="stat-value" style={{ color: netCashFlow >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-              {netCashFlow >= 0 ? '+' : ''}{netCashFlow.toLocaleString('tr-TR')} TL
+              {hideBalances ? '****' : `${netCashFlow >= 0 ? '+' : ''}${netCashFlow.toLocaleString('tr-TR')} TL`}
             </div>
             <div className="stat-desc">
-              Gelir: {monthlyIncome.toLocaleString('tr-TR')} TL | Gider: {monthlyExpense.toLocaleString('tr-TR')} TL
+              {hideBalances ? 'Gelir: **** | Gider: ****' : `Gelir: ${monthlyIncome.toLocaleString('tr-TR')} TL | Gider: ${monthlyExpense.toLocaleString('tr-TR')} TL`}
             </div>
           </div>
         </div>
@@ -549,7 +568,7 @@ export default function FinanceDashboard({
                       <div>
                         <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>{asset.ticker}</h4>
                         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {amountFloat} adet @ {displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : ''}{costPriceDisplay.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
+                          {hideBalances ? '**** adet @ ****' : `${amountFloat} adet @ ${displayCurrency === 'USD' ? '$' : displayCurrency === 'EUR' ? '€' : ''}${costPriceDisplay.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`}
                         </span>
                       </div>
                     </div>
@@ -754,7 +773,7 @@ export default function FinanceDashboard({
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{ fontSize: '13px', fontWeight: 'bold', color: tx.type === 'income' ? 'var(--success)' : 'var(--text-main)' }}>
-                        {tx.type === 'income' ? '+' : '-'}{parseFloat(tx.amount).toLocaleString('tr-TR')} TL
+                        {hideBalances ? '****' : `${tx.type === 'income' ? '+' : '-'}${parseFloat(tx.amount).toLocaleString('tr-TR')} TL`}
                       </span>
                       <button
                         className="btn-card-action delete"
@@ -783,7 +802,7 @@ export default function FinanceDashboard({
                       <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 600 }}>
                           <span>{getCategoryLabel(cat)}</span>
-                          <span>{val.toLocaleString('tr-TR')} TL ({percent}%)</span>
+                          <span>{hideBalances ? '****' : `${val.toLocaleString('tr-TR')} TL`} ({percent}%)</span>
                         </div>
                         <div className="progress-bar-track" style={{ height: '5px' }}>
                           <div 
