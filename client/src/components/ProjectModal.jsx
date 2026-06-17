@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Check, Trash2, StickyNote, User } from 'lucide-react';
+import { X, Plus, Check, Trash2, StickyNote, User, FileText } from 'lucide-react';
 
 export default function ProjectModal({
   isOpen,
@@ -8,7 +8,8 @@ export default function ProjectModal({
   onSaveProject,
   onAddTask,
   onToggleTask,
-  onDeleteTask
+  onDeleteTask,
+  onUpdateTask
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -21,6 +22,16 @@ export default function ProjectModal({
   const [taskTitle, setTaskTitle] = useState('');
   const [taskWeight, setTaskWeight] = useState(1);
   const [taskPrice, setTaskPrice] = useState(0);
+  const [taskPaidPrice, setTaskPaidPrice] = useState(0);
+  const [taskDescription, setTaskDescription] = useState('');
+
+  // Editing task state
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editWeight, setEditWeight] = useState(1);
+  const [editPrice, setEditPrice] = useState(0);
+  const [editPaidPrice, setEditPaidPrice] = useState(0);
+  const [editDescription, setEditDescription] = useState('');
 
   // Sync state with selected project when modal opens
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -43,6 +54,9 @@ export default function ProjectModal({
     setTaskTitle('');
     setTaskWeight(1);
     setTaskPrice(0);
+    setTaskPaidPrice(0);
+    setTaskDescription('');
+    setEditingTaskId(null);
   }, [project, isOpen]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -68,11 +82,36 @@ export default function ProjectModal({
       project.id, 
       taskTitle.trim(), 
       parseInt(taskWeight) || 1, 
-      project.type === 'external' ? (parseFloat(taskPrice) || 0) : 0
+      project.type === 'external' ? (parseFloat(taskPrice) || 0) : 0,
+      project.type === 'external' ? (parseFloat(taskPaidPrice) || 0) : 0,
+      taskDescription.trim()
     );
     setTaskTitle('');
     setTaskWeight(1);
     setTaskPrice(0);
+    setTaskPaidPrice(0);
+    setTaskDescription('');
+  };
+
+  const handleStartEditTask = (task) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title || '');
+    setEditWeight(task.weight || 1);
+    setEditPrice(task.price || 0);
+    setEditPaidPrice(task.paid_price || 0);
+    setEditDescription(task.description || '');
+  };
+
+  const handleSaveTaskClick = (taskId) => {
+    if (!editTitle.trim()) return;
+    onUpdateTask(taskId, {
+      title: editTitle.trim(),
+      weight: parseInt(editWeight) || 1,
+      price: project.type === 'external' ? (parseFloat(editPrice) || 0) : 0,
+      paid_price: project.type === 'external' ? (parseFloat(editPaidPrice) || 0) : 0,
+      description: editDescription.trim()
+    });
+    setEditingTaskId(null);
   };
 
   const handleTaskKeyPress = (e) => {
@@ -90,7 +129,7 @@ export default function ProjectModal({
 
   // Price calculations for external projects
   const totalBudget = tasks.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0);
-  const earnedBudget = tasks.reduce((sum, t) => sum + (t.is_completed ? (parseFloat(t.price) || 0) : 0), 0);
+  const totalPaid = tasks.reduce((sum, t) => sum + (parseFloat(t.paid_price) || 0), 0);
 
   const getProgressColor = (percent) => {
     if (percent === 100) return 'var(--success)';
@@ -218,15 +257,26 @@ export default function ProjectModal({
                 </div>
 
                 {project && project.type === 'external' && (
-                  <div className="price-input-container">
-                    <label>Fiyat (₺)</label>
-                    <input
-                      type="number"
-                      value={taskPrice}
-                      onChange={(e) => setTaskPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                      min="0"
-                    />
-                  </div>
+                  <>
+                    <div className="price-input-container animate-fade-in">
+                      <label>Fiyat (₺)</label>
+                      <input
+                        type="number"
+                        value={taskPrice}
+                        onChange={(e) => setTaskPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                        min="0"
+                      />
+                    </div>
+                    <div className="price-input-container animate-fade-in">
+                      <label>Ödenen (₺)</label>
+                      <input
+                        type="number"
+                        value={taskPaidPrice}
+                        onChange={(e) => setTaskPaidPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                        min="0"
+                      />
+                    </div>
+                  </>
                 )}
                 
                 <button
@@ -247,39 +297,160 @@ export default function ProjectModal({
                       Henüz hiç iş maddesi eklenmemiş. Yukarıdan ilkini ekleyin!
                     </li>
                   ) : (
-                    tasks.map((task) => (
-                      <li key={task.id} className={`task-item ${task.is_completed ? 'completed' : ''}`}>
-                        <div className="task-item-left">
-                          <div
-                            className={`custom-checkbox ${task.is_completed ? 'checked' : ''}`}
-                            onClick={() => onToggleTask(task.id)}
-                          >
-                            <Check />
-                          </div>
-                          <span className="task-title" onClick={() => onToggleTask(task.id)}>
-                            {task.title}
-                          </span>
-                          
-                          <span className="task-weight-badge" title="İş Yükü / Ağırlık">
-                            Ağırlık: {task.weight}
-                          </span>
+                    tasks.map((task) => {
+                      const isEditing = editingTaskId === task.id;
+                      if (isEditing) {
+                        return (
+                          <li key={task.id} className="task-item-edit-mode animate-fade-in">
+                            <div className="edit-task-form">
+                              <div className="form-group">
+                                <label style={{ fontSize: '10px' }}>Görev Adı</label>
+                                <input
+                                  type="text"
+                                  value={editTitle}
+                                  onChange={(e) => setEditTitle(e.target.value)}
+                                  placeholder="Görev adı..."
+                                  required
+                                  style={{ padding: '8px 10px', fontSize: '13px' }}
+                                />
+                              </div>
+                              
+                              <div className="form-row-2" style={{ gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '10px' }}>İş Yükü</label>
+                                  <input
+                                    type="number"
+                                    value={editWeight}
+                                    onChange={(e) => setEditWeight(Math.max(1, parseInt(e.target.value) || 1))}
+                                    min="1"
+                                    style={{ padding: '8px 10px', fontSize: '13px' }}
+                                  />
+                                </div>
+                                {project.type === 'external' && (
+                                  <div className="form-group">
+                                    <label style={{ fontSize: '10px' }}>Fiyat (₺)</label>
+                                    <input
+                                      type="number"
+                                      value={editPrice}
+                                      onChange={(e) => setEditPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                                      min="0"
+                                      style={{ padding: '8px 10px', fontSize: '13px' }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
 
-                          {project && project.type === 'external' && parseFloat(task.price) > 0 && (
-                            <span className="task-price-badge">
-                              {formatPrice(task.price)}
-                            </span>
+                              {project.type === 'external' && (
+                                <div className="form-group">
+                                  <label style={{ fontSize: '10px' }}>Ödenen Kısım (₺)</label>
+                                  <input
+                                    type="number"
+                                    value={editPaidPrice}
+                                    onChange={(e) => setEditPaidPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                                    min="0"
+                                    style={{ padding: '8px 10px', fontSize: '13px' }}
+                                  />
+                                </div>
+                              )}
+
+                              <div className="form-group">
+                                <label style={{ fontSize: '10px' }}>Açıklama / Notlar</label>
+                                <textarea
+                                  value={editDescription}
+                                  onChange={(e) => setEditDescription(e.target.value)}
+                                  rows="2"
+                                  placeholder="Detaylı açıklama girin..."
+                                  style={{ padding: '8px 10px', fontSize: '13px' }}
+                                />
+                              </div>
+
+                              <div className="edit-task-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setEditingTaskId(null)}
+                                  style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '6px' }}
+                                >
+                                  Vazgeç
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => handleSaveTaskClick(task.id)}
+                                  style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '6px' }}
+                                >
+                                  Kaydet
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      }
+
+                      return (
+                        <li key={task.id} className={`task-item ${task.is_completed ? 'completed' : ''}`} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div className="task-item-left">
+                              <div
+                                className={`custom-checkbox ${task.is_completed ? 'checked' : ''}`}
+                                onClick={() => onToggleTask(task.id)}
+                              >
+                                <Check />
+                              </div>
+                              <span 
+                                className="task-title" 
+                                onClick={() => handleStartEditTask(task)}
+                                title="Açıklama ve detayları düzenlemek için tıklayın"
+                              >
+                                {task.title}
+                              </span>
+                              
+                              <span className="task-weight-badge" title="İş Yükü / Ağırlık">
+                                Ağırlık: {task.weight}
+                              </span>
+
+                              {project && project.type === 'external' && parseFloat(task.price) > 0 && (
+                                <span className="task-price-badge" title={`Ödenen: ${formatPrice(task.paid_price)} / Toplam: ${formatPrice(task.price)}`}>
+                                  {parseFloat(task.paid_price) > 0 ? (
+                                    <>Ödenen: {formatPrice(task.paid_price)} / {formatPrice(task.price)}</>
+                                  ) : (
+                                    formatPrice(task.price)
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn-task-edit"
+                                onClick={() => handleStartEditTask(task)}
+                                title="Görevi Düzenle / Açıklama Ekle"
+                              >
+                                <FileText size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-task-delete"
+                                onClick={() => onDeleteTask(task.id)}
+                                title="Görevi Sil"
+                              >
+                                <Trash2 />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {task.description && (
+                            <div 
+                              className="task-desc-preview" 
+                              onClick={() => handleStartEditTask(task)}
+                              title="Düzenlemek için tıklayın"
+                            >
+                              {task.description}
+                            </div>
                           )}
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-task-delete"
-                          onClick={() => onDeleteTask(task.id)}
-                          title="Görevi Sil"
-                        >
-                          <Trash2 />
-                        </button>
-                      </li>
-                    ))
+                        </li>
+                      );
+                    })
                   )}
                 </ul>
               </div>
@@ -295,9 +466,9 @@ export default function ProjectModal({
 
                 {project && project.type === 'external' && totalBudget > 0 && (
                   <div className="tasks-progress-row" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <span>Toplam Bütçe / Kazanılan:</span>
+                    <span>Ödenen / Toplam Bütçe:</span>
                     <span style={{ fontFamily: 'Fira Code, monospace', fontWeight: 600 }}>
-                      <span style={{ color: 'var(--success)' }}>{formatPrice(earnedBudget)}</span>
+                      <span style={{ color: 'var(--success)' }}>{formatPrice(totalPaid)}</span>
                       <span style={{ opacity: 0.5 }}> / </span>
                       <span>{formatPrice(totalBudget)}</span>
                     </span>

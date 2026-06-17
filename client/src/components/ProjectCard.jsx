@@ -30,7 +30,7 @@ export default function ProjectCard({
 
   // Calculate prices for external projects
   const totalBudget = tasks.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0);
-  const earnedBudget = tasks.reduce((sum, t) => sum + (t.is_completed ? (parseFloat(t.price) || 0) : 0), 0);
+  const totalPaid = tasks.reduce((sum, t) => sum + (parseFloat(t.paid_price) || 0), 0);
 
   const formatPrice = (val) => {
     return new Intl.NumberFormat('tr-TR', {
@@ -84,9 +84,9 @@ export default function ProjectCard({
         {/* Price display for external projects */}
         {project.type === 'external' && (
           <div className="project-card-price-wrapper" onClick={(e) => e.stopPropagation()}>
-            <span className="price-label">Proje Bütçesi:</span>
+            <span className="price-label">Bütçe (Ödenen / Toplam):</span>
             <span className="price-values">
-              <span className="price-earned">{formatPrice(earnedBudget)}</span>
+              <span className="price-earned">{formatPrice(totalPaid)}</span>
               <span style={{ opacity: 0.5 }}> / </span>
               <span>{formatPrice(totalBudget)}</span>
             </span>

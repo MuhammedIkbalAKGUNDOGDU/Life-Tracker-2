@@ -50,6 +50,8 @@ app.get('/api/projects', async (req, res) => {
               'title', t.title, 
               'weight', t.weight, 
               'price', t.price, 
+              'paid_price', t.paid_price,
+              'description', t.description,
               'is_completed', t.is_completed
             ) ORDER BY t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
@@ -158,6 +160,8 @@ app.put('/api/projects/:id', async (req, res) => {
               'title', t.title, 
               'weight', t.weight, 
               'price', t.price, 
+              'paid_price', t.paid_price,
+              'description', t.description,
               'is_completed', t.is_completed
             ) ORDER BY t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
@@ -195,7 +199,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 // 5. ADD TASK TO A PROJECT
 app.post('/api/projects/:id/tasks', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price } = req.body;
+  const { title, weight, price, paid_price, description } = req.body;
   try {
     const checkProject = await pool.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (checkProject.rows.length === 0) {
@@ -203,11 +207,18 @@ app.post('/api/projects/:id/tasks', async (req, res) => {
     }
 
     const query = `
-      INSERT INTO project_tasks (project_id, title, weight, price)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [id, title, weight || 1, price || 0.00]);
+    const { rows } = await pool.query(query, [
+      id, 
+      title, 
+      weight || 1, 
+      price || 0.00, 
+      paid_price || 0.00, 
+      description || ''
+    ]);
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error(err.message);
@@ -218,7 +229,7 @@ app.post('/api/projects/:id/tasks', async (req, res) => {
 // 6. UPDATE TASK STATUS (Toggle complete, change title/weight)
 app.put('/api/tasks/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price, is_completed } = req.body;
+  const { title, weight, price, paid_price, description, is_completed } = req.body;
   try {
     const getTask = await pool.query('SELECT * FROM project_tasks WHERE id = $1', [id]);
     if (getTask.rows.length === 0) {
@@ -229,15 +240,25 @@ app.put('/api/tasks/:id', async (req, res) => {
     const newTitle = title !== undefined ? title : currentTask.title;
     const newWeight = weight !== undefined ? weight : currentTask.weight;
     const newPrice = price !== undefined ? price : currentTask.price;
+    const newPaidPrice = paid_price !== undefined ? paid_price : currentTask.paid_price;
+    const newDescription = description !== undefined ? description : currentTask.description;
     const newIsCompleted = is_completed !== undefined ? is_completed : currentTask.is_completed;
 
     const query = `
       UPDATE project_tasks
-      SET title = $1, weight = $2, price = $3, is_completed = $4
-      WHERE id = $5
+      SET title = $1, weight = $2, price = $3, paid_price = $4, description = $5, is_completed = $6
+      WHERE id = $7
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [newTitle, newWeight, newPrice, newIsCompleted, id]);
+    const { rows } = await pool.query(query, [
+      newTitle, 
+      newWeight, 
+      newPrice, 
+      newPaidPrice, 
+      newDescription, 
+      newIsCompleted, 
+      id
+    ]);
     res.json(rows[0]);
   } catch (err) {
     console.error(err.message);

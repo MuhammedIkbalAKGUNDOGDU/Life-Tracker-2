@@ -282,12 +282,18 @@ export default function App() {
   };
 
   // POST: Add task inside a project
-  const addTask = async (projectId, taskTitle, taskWeight, taskPrice) => {
+  const addTask = async (projectId, taskTitle, taskWeight, taskPrice, taskPaidPrice, taskDescription) => {
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: taskTitle, weight: taskWeight, price: taskPrice })
+        body: JSON.stringify({ 
+          title: taskTitle, 
+          weight: taskWeight, 
+          price: taskPrice, 
+          paid_price: taskPaidPrice || 0, 
+          description: taskDescription || '' 
+        })
       });
       if (!res.ok) throw new Error('Görev eklenemedi.');
       
@@ -311,6 +317,51 @@ export default function App() {
       
       setProjects(updatedProjects);
       showToast('İş maddesi başarıyla eklendi.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // PUT: Update Task details (title, weight, price, paid_price, description)
+  const updateTask = async (taskId, taskData) => {
+    let targetProject = null;
+    for (const p of projects) {
+      const t = (p.tasks || []).find(x => x.id === taskId);
+      if (t) {
+        targetProject = p;
+        break;
+      }
+    }
+    if (!targetProject) return;
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskData)
+      });
+      if (!res.ok) throw new Error('Görev güncellenemedi.');
+      
+      const updatedTask = await res.json();
+
+      const updatedProjects = projects.map(p => {
+        if (p.id === targetProject.id) {
+          const updatedTasks = p.tasks.map(t => t.id === taskId ? updatedTask : t);
+          
+          // Recalculate progress
+          const totalWeight = updatedTasks.reduce((sum, t) => sum + t.weight, 0);
+          const completedWeight = updatedTasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
+          const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
+          
+          const updatedProj = { ...p, tasks: updatedTasks, progress };
+          setSelectedProject(updatedProj);
+          return updatedProj;
+        }
+        return p;
+      });
+
+      setProjects(updatedProjects);
+      showToast('Görev başarıyla güncellendi.', 'success');
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -1862,6 +1913,7 @@ export default function App() {
         onAddTask={addTask}
         onToggleTask={toggleTask}
         onDeleteTask={deleteTask}
+        onUpdateTask={updateTask}
       />
 
       {/* Goal Management Modal */}

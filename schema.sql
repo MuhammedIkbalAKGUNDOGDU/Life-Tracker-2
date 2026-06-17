@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS project_tasks (
     title VARCHAR(255) NOT NULL,
     weight INTEGER DEFAULT 1 CHECK (weight >= 1),
     price NUMERIC(12, 2) DEFAULT 0.00,
+    paid_price NUMERIC(12, 2) DEFAULT 0.00,
+    description TEXT DEFAULT '',
     is_completed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
