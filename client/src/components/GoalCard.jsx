@@ -12,7 +12,8 @@ import {
   Check, 
   Calendar,
   Flame,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle
 } from 'lucide-react';
 
 const getCategoryLabel = (cat) => {
@@ -85,9 +86,9 @@ export default function GoalCard({
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) {
-      return { text: 'Gecikti', className: 'badge-overdue' };
+      return { text: 'Gecikti', className: 'badge-overdue', isOverdue: true };
     } else if (diffDays === 0) {
-      return { text: 'Bugün', className: 'badge-today' };
+      return { text: 'Bugün', className: 'badge-today', isToday: true };
     } else if (diffDays === 1) {
       return { text: 'Yarın', className: 'badge-tomorrow' };
     } else {
@@ -96,13 +97,15 @@ export default function GoalCard({
   };
 
   const daysLabel = getDaysRemainingLabel(goal.target_date);
+  const isOverdue = !isCompleted && daysLabel && daysLabel.isOverdue;
+  const isToday = !isCompleted && daysLabel && daysLabel.isToday;
   const isDragging = index === draggedIndex;
   const isDragOver = index === dragOverIndex;
 
   if (viewMode === 'list') {
     return (
       <div 
-        className={`project-card glass-card ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${isCompleted ? 'goal-completed-card' : ''}`}
+        className={`project-card glass-card ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${isCompleted ? 'goal-completed-card' : ''} ${isOverdue ? 'goal-overdue-card' : ''} ${isToday ? 'goal-today-card' : ''}`}
         onClick={() => onEdit(goal)}
         draggable
         onDragStart={(e) => onDragStart(e, index)}
@@ -208,8 +211,8 @@ export default function GoalCard({
           </span>
 
           {daysLabel && (
-            <span className={`badge ${daysLabel.className}`} style={{ padding: '3px 8px', fontSize: '10px' }}>
-              <Calendar size={8} style={{ marginRight: '2px' }} />
+            <span className={`badge ${daysLabel.className} ${isOverdue ? 'pulse-overdue' : ''} ${isToday ? 'pulse-today' : ''}`} style={{ padding: '3px 8px', fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+              {isOverdue || isToday ? <AlertTriangle size={8} /> : <Calendar size={8} style={{ marginRight: '2px' }} />}
               {daysLabel.text}
             </span>
           )}
@@ -259,7 +262,7 @@ export default function GoalCard({
 
   return (
     <div 
-      className={`project-card glass-card ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${isCompleted ? 'goal-completed-card' : ''}`}
+      className={`project-card glass-card ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${isCompleted ? 'goal-completed-card' : ''} ${isOverdue ? 'goal-overdue-card' : ''} ${isToday ? 'goal-today-card' : ''}`}
       onClick={() => onEdit(goal)}
       draggable
       onDragStart={(e) => onDragStart(e, index)}
@@ -280,8 +283,8 @@ export default function GoalCard({
             </span>
 
             {daysLabel && (
-              <span className={`badge ${daysLabel.className}`}>
-                <Calendar size={10} style={{ marginRight: '3px' }} />
+              <span className={`badge ${daysLabel.className} ${isOverdue ? 'pulse-overdue' : ''} ${isToday ? 'pulse-today' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                {isOverdue || isToday ? <AlertTriangle size={10} /> : <Calendar size={10} style={{ marginRight: '3px' }} />}
                 {daysLabel.text}
               </span>
             )}

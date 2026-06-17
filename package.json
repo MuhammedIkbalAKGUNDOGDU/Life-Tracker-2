@@ -1,7 +1,7 @@
 {
-  "name": "life-tracker",
+  "name": "softium-planner",
   "version": "1.0.0",
-  "description": "Life Tracker application with projects tracking",
+  "description": "Softium Planner application with projects tracking",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

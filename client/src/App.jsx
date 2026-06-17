@@ -506,6 +506,44 @@ export default function App() {
     setDragOverTabIdx(null);
   };
 
+  const getSortedGoals = (goalsList) => {
+    const getGoalPriorityScore = (g) => {
+      const isCompleted = g.is_completed || (g.progress_type === 'metric' && parseFloat(g.current_value) >= parseFloat(g.target_value));
+      if (isCompleted) return 0;
+      
+      if (!g.target_date) return 1;
+      
+      const targetDate = new Date(g.target_date);
+      targetDate.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const diffTime = targetDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) return 3; // Overdue
+      if (diffDays === 0) return 2; // Today
+      return 1; // Future / no date
+    };
+
+    return [...goalsList].sort((a, b) => {
+      const scoreA = getGoalPriorityScore(a);
+      const scoreB = getGoalPriorityScore(b);
+      
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA; // Descending score
+      }
+      
+      // If both are overdue or due today, sort by target date ascending (earliest deadline first)
+      if (scoreA >= 2 && a.target_date && b.target_date) {
+        return new Date(a.target_date) - new Date(b.target_date);
+      }
+      
+      // Otherwise keep sorting order
+      return (a.sort_order || 0) - (b.sort_order || 0);
+    });
+  };
+
   // === GOALS CRUD & ACTION HANDLERS ===
   
   // GET: Fetch all goals
@@ -1271,7 +1309,7 @@ export default function App() {
             <div className="brand-icon">
               <Activity />
             </div>
-            <h1>Life Tracker</h1>
+            <h1>Softium Planner</h1>
           </div>
 
           <nav className="sidebar-nav">
@@ -1539,7 +1577,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className={goalsViewMode === 'list' ? 'goals-list-container' : 'projects-grid'}>
-                  {(hideCompletedGoals 
+                  {getSortedGoals(hideCompletedGoals 
                     ? goals.filter(g => !(g.is_completed || (g.progress_type === 'metric' && parseFloat(g.current_value) >= parseFloat(g.target_value)))) 
                     : goals
                   ).map((goal, idx) => (
