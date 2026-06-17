@@ -16,6 +16,7 @@ import MilestoneAnalyticsModal from './components/MilestoneAnalyticsModal';
 import RoutinesDashboard from './components/RoutinesDashboard';
 import JournalDashboard from './components/JournalDashboard';
 import FinanceDashboard from './components/FinanceDashboard';
+import PendingPayments from './components/PendingPayments';
 import { 
   Activity, 
   FolderKanban, 
@@ -461,6 +462,15 @@ export default function App() {
   const handleEditClick = (project) => {
     setSelectedProject(project);
     setIsModalOpen(true);
+  };
+
+  // Open a project modal by its ID (used by PendingPayments click)
+  const handleOpenProjectById = (projectId) => {
+    const proj = projects.find(p => p.id === projectId);
+    if (proj) {
+      setSelectedProject(proj);
+      setIsModalOpen(true);
+    }
   };
 
   const handleCreateClick = () => {
@@ -1418,6 +1428,12 @@ export default function App() {
           <>
             {/* Dashboard Stat Cards */}
             <KPIStats projects={projects} />
+
+            {/* Kalan Ödemeler (Pending Payments) Panel */}
+            <PendingPayments
+              projects={projects}
+              onOpenProject={handleOpenProjectById}
+            />
 
             {/* Action Bar (Filters & Adding Button) */}
             <section className="action-bar-section">

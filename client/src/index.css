@@ -2328,6 +2328,269 @@ select option {
   text-decoration: underline;
 }
 
+/* ===================================================
+   PENDING PAYMENTS PANEL  (table-based, no CSS grid)
+   =================================================== */
+.pp-section {
+  margin-bottom: 20px;
+  padding: 0;
+  border: 1px solid rgba(245, 158, 11, 0.20);
+  background: rgba(245, 158, 11, 0.03);
+  overflow: hidden;
+}
 
+.light-theme .pp-section {
+  border-color: rgba(180, 120, 0, 0.18);
+  background: rgba(254, 243, 199, 0.35);
+}
 
+/* ---- Header ---- */
+.pp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-speed);
+}
+
+.pp-header:hover {
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.pp-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pp-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.pp-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.pp-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+}
+
+.pp-grand-total {
+  color: var(--warning);
+  font-family: 'Fira Code', monospace;
+}
+
+.pp-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  transition: background var(--transition-speed), color var(--transition-speed);
+}
+
+.pp-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+/* ---- Body ---- */
+.pp-body {
+  border-top: 1px solid rgba(245, 158, 11, 0.12);
+  overflow-x: auto;
+}
+
+.light-theme .pp-body {
+  border-top-color: rgba(180, 120, 0, 0.1);
+}
+
+/* ---- Table ---- */
+.pp-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 580px;
+}
+
+/* Head cells */
+.pp-th {
+  padding: 8px 14px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  background: rgba(245, 158, 11, 0.06);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.10);
+  white-space: nowrap;
+}
+
+.light-theme .pp-th {
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.pp-th-project { text-align: left; width: 22%; }
+.pp-th-client  { text-align: left; width: 18%; }
+.pp-th-task    { text-align: left; }
+.pp-th-num     { text-align: right; width: 11%; }
+.pp-th-remaining { color: var(--warning); }
+
+/* Data rows */
+.pp-tr {
+  cursor: pointer;
+  transition: background var(--transition-speed);
+}
+
+.pp-tr:not(:last-child) td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.light-theme .pp-tr:not(:last-child) td {
+  border-bottom-color: rgba(15, 23, 42, 0.05);
+}
+
+.pp-tr:hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.light-theme .pp-tr:hover {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+/* Data cells */
+.pp-td {
+  padding: 9px 14px;
+  font-size: 13px;
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.pp-td-project {
+  font-weight: 600;
+  color: var(--primary);
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-td-client {
+  max-width: 140px;
+}
+
+.pp-td-task {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-td-num {
+  text-align: right;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pp-td-paid {
+  color: var(--success);
+}
+
+.pp-td-remaining {
+  color: var(--warning);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Client badge */
+.pp-client-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: #a5b4fc;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.light-theme .pp-client-badge {
+  background: rgba(99, 102, 241, 0.08);
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
+.pp-empty-dash {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Footer total row */
+.pp-tr-total td {
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.07);
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.light-theme .pp-tr-total td {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.pp-td-total-label {
+  color: var(--text-muted);
+  text-align: right;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pp-td-total-val {
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  text-align: right;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 640px) {
+  .pp-td-task,
+  .pp-th-task,
+  .pp-td-client,
+  .pp-th-client,
+  .pp-td-num:not(.pp-td-remaining),
+  .pp-th-num:not(.pp-th-remaining) {
+    display: none;
+  }
+
+  .pp-td-total-label {
+    text-align: left;
+  }
+}
 
