@@ -59,7 +59,31 @@ export default function App() {
   
   // Theme & Navigation Sidebar State
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
-  const [activeTab, setActiveTab] = useState('projects');
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.slice(1);
+    const validTabs = ['projects', 'goals', 'habits', 'routines', 'journal', 'milestones', 'finance', 'yearly_payments'];
+    return validTabs.includes(hash) ? hash : 'projects';
+  });
+
+  // Sync activeTab state changes to URL hash
+  useEffect(() => {
+    if (window.location.hash.slice(1) !== activeTab) {
+      window.location.hash = activeTab;
+    }
+  }, [activeTab]);
+
+  // Listen to browser forward/back hash navigation changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1);
+      const validTabs = ['projects', 'goals', 'habits', 'routines', 'journal', 'milestones', 'finance', 'yearly_payments'];
+      if (validTabs.includes(hash)) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
   
   // Sidebar tabs drag-and-drop state
   const [tabs, setTabs] = useState(() => {
