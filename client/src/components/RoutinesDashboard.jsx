@@ -296,8 +296,8 @@ export default function RoutinesDashboard({
 
       {/* Routine Creation Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop open">
-          <div className="modal glass-card" style={{ maxWidth: '500px' }}>
+        <div className="modal-backdrop open" onClick={() => setIsModalOpen(false)}>
+          <div className="modal glass-card" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Yeni Rutin Oluştur</h2>
               <button className="btn-close" onClick={() => setIsModalOpen(false)} type="button">

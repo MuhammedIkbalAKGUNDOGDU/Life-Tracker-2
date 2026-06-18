@@ -27,15 +27,54 @@ pool.query('SELECT NOW()', (err, res) => {
     console.error('❌ PostgreSQL Database Connection Error:', err.message);
   } else {
     console.log('✅ PostgreSQL Database Connected Successfully at:', res.rows[0].now);
-    // Auto-migrate to add due_date column if not exists
+    // Auto-migrate to add due_date column and verify yearly_payments, options, and items tables
     pool.query(`
       ALTER TABLE project_tasks 
       ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL;
+
+      CREATE TABLE IF NOT EXISTS yearly_payments (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        title VARCHAR(255) NOT NULL,
+        client VARCHAR(255) DEFAULT '',
+        amount NUMERIC(12, 2) DEFAULT 0.00,
+        due_date DATE DEFAULT NULL,
+        description TEXT DEFAULT '',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS yearly_payment_options (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS yearly_payment_items (
+        id SERIAL PRIMARY KEY,
+        yearly_payment_id INTEGER REFERENCES yearly_payments(id) ON DELETE CASCADE,
+        category VARCHAR(255) NOT NULL,
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        currency VARCHAR(10) DEFAULT 'TRY',
+        description VARCHAR(255) DEFAULT ''
+      );
+
+      ALTER TABLE yearly_payment_items 
+      ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'TRY';
+
+      INSERT INTO yearly_payment_options (name)
+      VALUES ('Sunucu / Hosting'), ('Alan Adı (Domain)'), ('Bakım ve Destek'), ('Yazılım Lisansı'), ('Diğer')
+      ON CONFLICT (name) DO NOTHING;
+
+      INSERT INTO yearly_payment_items (yearly_payment_id, category, amount, description)
+      SELECT id, 'Diğer', amount, 'Eski kayıttan aktarıldı'
+      FROM yearly_payments
+      WHERE amount > 0 AND id NOT IN (SELECT DISTINCT yearly_payment_id FROM yearly_payment_items)
+      ON CONFLICT DO NOTHING;
     `, (migrateErr) => {
       if (migrateErr) {
-        console.error('❌ Database migration error (adding due_date column):', migrateErr.message);
+        console.error('❌ Database migration error:', migrateErr.message);
       } else {
-        console.log('✅ Database migration successful: project_tasks.due_date column verified.');
+        console.log('✅ Database migration successful: yearly payments options, items, and structures verified.');
       }
     });
   }
@@ -1642,6 +1681,247 @@ app.delete('/api/finance/transactions/:id', async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server error deleting transaction' });
+  }
+});
+
+
+// === YEARLY PAYMENTS API ENDPOINTS ===
+
+// 1. GET ALL YEARLY PAYMENTS (with nested items)
+app.get('/api/yearly-payments', async (req, res) => {
+  try {
+    const query = `
+      SELECT y.*, p.title as project_title, p.client as project_client,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                  'id', yi.id,
+                  'category', yi.category,
+                  'amount', yi.amount,
+                  'currency', yi.currency,
+                  'description', yi.description
+                ) ORDER BY yi.id)
+                FROM yearly_payment_items yi
+                WHERE yi.yearly_payment_id = y.id),
+               '[]'::json
+             ) as items
+      FROM yearly_payments y
+      LEFT JOIN projects p ON y.project_id = p.id
+      ORDER BY y.due_date ASC, y.created_at DESC;
+    `;
+    const { rows } = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving yearly payments' });
+  }
+});
+
+// 2. CREATE A YEARLY PAYMENT (with items)
+app.post('/api/yearly-payments', async (req, res) => {
+  const { project_id, title, client, due_date, description, items = [] } = req.body;
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+    const paymentQuery = `
+      INSERT INTO yearly_payments (project_id, title, client, amount, due_date, description)
+      VALUES ($1, $2, $3, 0.00, $4, $5)
+      RETURNING *;
+    `;
+    const paymentRes = await dbClient.query(paymentQuery, [
+      project_id || null,
+      title,
+      client || '',
+      due_date || null,
+      description || ''
+    ]);
+    const newPayment = paymentRes.rows[0];
+
+    // Insert items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        const itemQuery = `
+          INSERT INTO yearly_payment_items (yearly_payment_id, category, amount, currency, description)
+          VALUES ($1, $2, $3, $4, $5);
+        `;
+        await dbClient.query(itemQuery, [
+          newPayment.id,
+          item.category,
+          item.amount || 0.00,
+          item.currency || 'TRY',
+          item.description || ''
+        ]);
+      }
+    }
+    
+    await dbClient.query('COMMIT');
+    
+    // Fetch and return the complete payment with aggregated items
+    const completeQuery = `
+      SELECT y.*, p.title as project_title, p.client as project_client,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                  'id', yi.id,
+                  'category', yi.category,
+                  'amount', yi.amount,
+                  'currency', yi.currency,
+                  'description', yi.description
+                ) ORDER BY yi.id)
+                FROM yearly_payment_items yi
+                WHERE yi.yearly_payment_id = y.id),
+               '[]'::json
+             ) as items
+      FROM yearly_payments y
+      LEFT JOIN projects p ON y.project_id = p.id
+      WHERE y.id = $1;
+    `;
+    const finalRes = await pool.query(completeQuery, [newPayment.id]);
+    res.status(201).json(finalRes.rows[0]);
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating yearly payment' });
+  } finally {
+    dbClient.release();
+  }
+});
+
+// 3. UPDATE A YEARLY PAYMENT (with items)
+app.put('/api/yearly-payments/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, client, due_date, description, project_id, items = [] } = req.body;
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+    const updatePaymentQuery = `
+      UPDATE yearly_payments
+      SET title = $1, client = $2, due_date = $3, description = $4, project_id = $5, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $6
+      RETURNING *;
+    `;
+    const updateRes = await dbClient.query(updatePaymentQuery, [
+      title,
+      client || '',
+      due_date || null,
+      description || '',
+      project_id || null,
+      id
+    ]);
+    if (updateRes.rows.length === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Yearly payment not found' });
+    }
+
+    // Delete existing items
+    await dbClient.query('DELETE FROM yearly_payment_items WHERE yearly_payment_id = $1', [id]);
+
+    // Insert new items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        const itemQuery = `
+          INSERT INTO yearly_payment_items (yearly_payment_id, category, amount, currency, description)
+          VALUES ($1, $2, $3, $4, $5);
+        `;
+        await dbClient.query(itemQuery, [
+          id,
+          item.category,
+          item.amount || 0.00,
+          item.currency || 'TRY',
+          item.description || ''
+        ]);
+      }
+    }
+
+    await dbClient.query('COMMIT');
+
+    // Fetch and return the complete payment with aggregated items
+    const completeQuery = `
+      SELECT y.*, p.title as project_title, p.client as project_client,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                  'id', yi.id,
+                  'category', yi.category,
+                  'amount', yi.amount,
+                  'currency', yi.currency,
+                  'description', yi.description
+                ) ORDER BY yi.id)
+                FROM yearly_payment_items yi
+                WHERE yi.yearly_payment_id = y.id),
+               '[]'::json
+             ) as items
+      FROM yearly_payments y
+      LEFT JOIN projects p ON y.project_id = p.id
+      WHERE y.id = $1;
+    `;
+    const finalRes = await pool.query(completeQuery, [id]);
+    res.json(finalRes.rows[0]);
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating yearly payment' });
+  } finally {
+    dbClient.release();
+  }
+});
+
+// 4. DELETE A YEARLY PAYMENT
+app.delete('/api/yearly-payments/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM yearly_payments WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Yearly payment not found' });
+    }
+    res.json({ message: 'Yearly payment deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting yearly payment' });
+  }
+});
+
+// 5. GET ALL YEARLY PAYMENT OPTIONS
+app.get('/api/yearly-payment-options', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM yearly_payment_options ORDER BY name ASC');
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error retrieving yearly payment options' });
+  }
+});
+
+// 6. CREATE A YEARLY PAYMENT OPTION
+app.post('/api/yearly-payment-options', async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Option name is required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO yearly_payment_options (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim()]
+    );
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'Option already exists' });
+    }
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error creating yearly payment option' });
+  }
+});
+
+// 7. DELETE A YEARLY PAYMENT OPTION
+app.delete('/api/yearly-payment-options/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM yearly_payment_options WHERE id = $1', [id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Option not found' });
+    }
+    res.json({ message: 'Option deleted successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting yearly payment option' });
   }
 });
 

@@ -84,8 +84,8 @@ export default function GoalModal({
   };
 
   return (
-    <div className="modal-backdrop open">
-      <div className="modal glass-card" style={{ maxWidth: '650px' }}>
+    <div className="modal-backdrop open" onClick={onClose}>
+      <div className="modal glass-card" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{goal ? 'Hedefi Düzenle' : 'Yeni Hedef Ekle'}</h2>
           <button className="btn-close" onClick={onClose} type="button">

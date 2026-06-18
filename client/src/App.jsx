@@ -18,6 +18,7 @@ import JournalDashboard from './components/JournalDashboard';
 import FinanceDashboard from './components/FinanceDashboard';
 import PendingPayments from './components/PendingPayments';
 import UpcomingInstallments from './components/UpcomingInstallments';
+import YearlyPaymentsDashboard from './components/YearlyPaymentsDashboard';
 import { 
   Activity, 
   FolderKanban, 
@@ -43,7 +44,8 @@ import {
   Sparkles,
   Lock,
   Coins,
-  FileText
+  FileText,
+  CalendarRange
 } from 'lucide-react';
 
 export default function App() {
@@ -67,7 +69,8 @@ export default function App() {
       { id: 'routines', label: 'Rutinler', icon: 'routines' },
       { id: 'journal', label: 'Günlük', icon: 'journal' },
       { id: 'milestones', label: 'Başarımlar', icon: 'milestones' },
-      { id: 'finance', label: 'Finans', icon: 'finance' }
+      { id: 'finance', label: 'Finans', icon: 'finance' },
+      { id: 'yearly_payments', label: 'Yıllık Ödemeler', icon: 'yearly_payments' }
     ];
     if (savedTabs) {
       try { 
@@ -86,6 +89,9 @@ export default function App() {
         }
         if (!parsed.some(t => t.id === 'finance')) {
           parsed.push({ id: 'finance', label: 'Finans', icon: 'finance' });
+        }
+        if (!parsed.some(t => t.id === 'yearly_payments')) {
+          parsed.push({ id: 'yearly_payments', label: 'Yıllık Ödemeler', icon: 'yearly_payments' });
         }
         return parsed; 
       } catch(e) { }
@@ -280,6 +286,32 @@ export default function App() {
       } catch (err) {
         showToast(err.message, 'error');
       }
+    }
+  };
+
+  const transferProjectToYearly = async (project) => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const payload = {
+        project_id: project.id,
+        title: project.title,
+        client: project.client || '',
+        amount: 0,
+        due_date: todayStr,
+        description: `Proje ile ilişkili yıllık ödeme.`
+      };
+      
+      const res = await fetch('/api/yearly-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) throw new Error('Proje yıllık ödemelere aktarılamadı.');
+      
+      showToast('Proje yıllık ödeme listesine aktarıldı. Detayları Yıllık Ödemeler sekmesinden düzenleyebilirsiniz.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -1049,6 +1081,7 @@ export default function App() {
       case 'journal': return <BookOpen />;
       case 'milestones': return <Trophy />;
       case 'finance': return <Coins />;
+      case 'yearly_payments': return <CalendarRange />;
       default: return <Info />;
     }
   };
@@ -1557,6 +1590,7 @@ export default function App() {
                       index={idx}
                       onEdit={handleEditClick}
                       onDelete={deleteProject}
+                      onTransferToYearly={transferProjectToYearly}
                       onDragStart={handleProjectDragStart}
                       onDragOver={handleProjectDragOver}
                       onDrop={handleProjectDrop}
@@ -1788,6 +1822,11 @@ export default function App() {
             onDeleteTransaction={deleteFinanceTransaction}
             onRefreshPrices={fetchFinanceData}
           />
+        ) : activeTab === 'yearly_payments' ? (
+          <YearlyPaymentsDashboard 
+            projects={projects}
+            onOpenProject={handleOpenProjectById}
+          />
         ) : (
           /* Milestones View */
           (() => {
@@ -1939,6 +1978,7 @@ export default function App() {
         onToggleTask={toggleTask}
         onDeleteTask={deleteTask}
         onUpdateTask={updateTask}
+        onTransferToYearly={transferProjectToYearly}
       />
 
       {/* Goal Management Modal */}
@@ -1972,8 +2012,8 @@ export default function App() {
 
       {/* Milestone Unlock Confirmation Modal */}
       {milestoneToUnlock && (
-        <div className="modal-backdrop open">
-          <div className="modal glass-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+        <div className="modal-backdrop open" onClick={() => setMilestoneToUnlock(null)}>
+          <div className="modal glass-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px', color: 'var(--primary)' }}>
               <Trophy size={48} className="pulse-priority" />
             </div>

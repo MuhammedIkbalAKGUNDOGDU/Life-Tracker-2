@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Check, Trash2, StickyNote, User, FileText } from 'lucide-react';
+import { X, Plus, Check, Trash2, StickyNote, User, FileText, CalendarCheck } from 'lucide-react';
 
 export default function ProjectModal({
   isOpen,
@@ -9,7 +9,8 @@ export default function ProjectModal({
   onAddTask,
   onToggleTask,
   onDeleteTask,
-  onUpdateTask
+  onUpdateTask,
+  onTransferToYearly
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -182,8 +183,8 @@ export default function ProjectModal({
   };
 
   return (
-    <div className="modal-backdrop open">
-      <div className="modal glass-card">
+    <div className="modal-backdrop open" onClick={onClose}>
+      <div className="modal glass-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{project ? 'Projeyi Düzenle & Yönet' : 'Yeni Proje Oluştur'}</h2>
           <button className="btn-close" onClick={onClose} type="button">
@@ -566,6 +567,19 @@ export default function ProjectModal({
           </div>
 
           <div className="modal-footer">
+            {project && onTransferToYearly && (
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTransferToYearly(project);
+                }}
+                style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#3b82f6', color: '#60a5fa' }}
+              >
+                <CalendarCheck size={16} /> Yıllık Ödemelere Aktar
+              </button>
+            )}
             <button type="button" className="btn btn-secondary" onClick={onClose}>Vazgeç</button>
             <button type="submit" className="btn btn-primary">Kaydet</button>
           </div>

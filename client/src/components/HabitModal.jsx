@@ -88,8 +88,8 @@ export default function HabitModal({
   ];
 
   return (
-    <div className="modal-backdrop open">
-      <div className="modal glass-card" style={{ maxWidth: '600px' }}>
+    <div className="modal-backdrop open" onClick={onClose}>
+      <div className="modal glass-card" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{habit ? 'Alışkanlığı Düzenle' : 'Yeni Alışkanlık Ekle'}</h2>
           <button className="btn-close" onClick={onClose} type="button">

@@ -879,8 +879,8 @@ export default function FinanceDashboard({
 
       {/* Asset Creation/Management Modal */}
       {isAssetModalOpen && (
-        <div className="modal-backdrop open">
-          <div className="modal glass-card" style={{ maxWidth: '450px' }}>
+        <div className="modal-backdrop open" onClick={() => setIsAssetModalOpen(false)}>
+          <div className="modal glass-card" style={{ maxWidth: '450px' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{isAddingToAsset ? `${isAddingToAsset.ticker} Alım Yap / Ekle` : 'Portföye Varlık Ekle'}</h2>
               <button className="btn-close" onClick={() => setIsAssetModalOpen(false)}>

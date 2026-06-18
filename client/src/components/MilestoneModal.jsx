@@ -39,8 +39,8 @@ export default function MilestoneModal({
   };
 
   return (
-    <div className="modal-backdrop open">
-      <div className="modal glass-card" style={{ maxWidth: '550px' }}>
+    <div className="modal-backdrop open" onClick={onClose}>
+      <div className="modal glass-card" style={{ maxWidth: '550px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Yeni Başarım Ekle</h2>
           <button className="btn-close" onClick={onClose} type="button">
