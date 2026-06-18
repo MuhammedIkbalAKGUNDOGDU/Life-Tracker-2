@@ -32,6 +32,7 @@ export default function ProjectModal({
   const [editPrice, setEditPrice] = useState(0);
   const [editPaidPrice, setEditPaidPrice] = useState(0);
   const [editDescription, setEditDescription] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
 
   // Sync state with selected project when modal opens
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -57,6 +58,7 @@ export default function ProjectModal({
     setTaskPaidPrice(0);
     setTaskDescription('');
     setEditingTaskId(null);
+    setEditDueDate('');
   }, [project, isOpen]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -100,24 +102,58 @@ export default function ProjectModal({
     setEditPrice(task.price || 0);
     setEditPaidPrice(task.paid_price || 0);
     setEditDescription(task.description || '');
+    
+    let dateStr = '';
+    if (task.due_date) {
+      try {
+        dateStr = new Date(task.due_date).toISOString().split('T')[0];
+      } catch (e) {
+        dateStr = '';
+      }
+    }
+    setEditDueDate(dateStr);
   };
 
   const handleSaveTaskClick = (taskId) => {
     if (!editTitle.trim()) return;
+
     onUpdateTask(taskId, {
       title: editTitle.trim(),
       weight: parseInt(editWeight) || 1,
       price: project.type === 'external' ? (parseFloat(editPrice) || 0) : 0,
       paid_price: project.type === 'external' ? (parseFloat(editPaidPrice) || 0) : 0,
+      due_date: project.type === 'external' ? (editDueDate || null) : null,
       description: editDescription.trim()
     });
     setEditingTaskId(null);
   };
 
-  const handleTaskKeyPress = (e) => {
+  const hasOverduePayment = (task) => {
+    const price = parseFloat(task.price) || 0;
+    const paid = parseFloat(task.paid_price) || 0;
+    if (price <= paid || !task.due_date) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(task.due_date);
+    due.setHours(0, 0, 0, 0);
+    return due.getTime() < today.getTime();
+  };
+
+  const handleTaskKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleAddTaskClick();
+    }
+  };
+
+  const handleEditTaskKeyDown = (e, taskId) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveTaskClick(taskId);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingTaskId(null);
     }
   };
 
@@ -241,7 +277,7 @@ export default function ProjectModal({
                   type="text"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
-                  onKeyPress={handleTaskKeyPress}
+                  onKeyDown={handleTaskKeyDown}
                   placeholder="Yeni iş maddesi ekle..."
                 />
                 
@@ -251,6 +287,7 @@ export default function ProjectModal({
                     type="number"
                     value={taskWeight}
                     onChange={(e) => setTaskWeight(Math.max(1, parseInt(e.target.value) || 1))}
+                    onKeyDown={handleTaskKeyDown}
                     min="1"
                     max="100"
                   />
@@ -264,6 +301,7 @@ export default function ProjectModal({
                         type="number"
                         value={taskPrice}
                         onChange={(e) => setTaskPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                        onKeyDown={handleTaskKeyDown}
                         min="0"
                       />
                     </div>
@@ -273,6 +311,7 @@ export default function ProjectModal({
                         type="number"
                         value={taskPaidPrice}
                         onChange={(e) => setTaskPaidPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                        onKeyDown={handleTaskKeyDown}
                         min="0"
                       />
                     </div>
@@ -309,6 +348,7 @@ export default function ProjectModal({
                                   type="text"
                                   value={editTitle}
                                   onChange={(e) => setEditTitle(e.target.value)}
+                                  onKeyDown={(e) => handleEditTaskKeyDown(e, task.id)}
                                   placeholder="Görev adı..."
                                   required
                                   style={{ padding: '8px 10px', fontSize: '13px' }}
@@ -322,6 +362,7 @@ export default function ProjectModal({
                                     type="number"
                                     value={editWeight}
                                     onChange={(e) => setEditWeight(Math.max(1, parseInt(e.target.value) || 1))}
+                                    onKeyDown={(e) => handleEditTaskKeyDown(e, task.id)}
                                     min="1"
                                     style={{ padding: '8px 10px', fontSize: '13px' }}
                                   />
@@ -333,6 +374,7 @@ export default function ProjectModal({
                                       type="number"
                                       value={editPrice}
                                       onChange={(e) => setEditPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                                      onKeyDown={(e) => handleEditTaskKeyDown(e, task.id)}
                                       min="0"
                                       style={{ padding: '8px 10px', fontSize: '13px' }}
                                     />
@@ -341,15 +383,29 @@ export default function ProjectModal({
                               </div>
 
                               {project.type === 'external' && (
-                                <div className="form-group">
-                                  <label style={{ fontSize: '10px' }}>Ödenen Kısım (₺)</label>
-                                  <input
-                                    type="number"
-                                    value={editPaidPrice}
-                                    onChange={(e) => setEditPaidPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                                    min="0"
-                                    style={{ padding: '8px 10px', fontSize: '13px' }}
-                                  />
+                                <div className="form-row-2" style={{ gap: '10px' }}>
+                                  <div className="form-group">
+                                    <label style={{ fontSize: '10px' }}>Ödenen Kısım (₺)</label>
+                                    <input
+                                      type="number"
+                                      value={editPaidPrice}
+                                      onChange={(e) => setEditPaidPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                                      onKeyDown={(e) => handleEditTaskKeyDown(e, task.id)}
+                                      min="0"
+                                      style={{ padding: '8px 10px', fontSize: '13px' }}
+                                    />
+                                  </div>
+                                  
+                                  <div className="form-group">
+                                    <label style={{ fontSize: '10px' }}>Son Ödeme Tarihi</label>
+                                    <input
+                                      type="date"
+                                      value={editDueDate}
+                                      onChange={(e) => setEditDueDate(e.target.value)}
+                                      onKeyDown={(e) => handleEditTaskKeyDown(e, task.id)}
+                                      style={{ padding: '8px 10px', fontSize: '13px' }}
+                                    />
+                                  </div>
                                 </div>
                               )}
 
@@ -358,6 +414,12 @@ export default function ProjectModal({
                                 <textarea
                                   value={editDescription}
                                   onChange={(e) => setEditDescription(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      setEditingTaskId(null);
+                                    }
+                                  }}
                                   rows="2"
                                   placeholder="Detaylı açıklama girin..."
                                   style={{ padding: '8px 10px', fontSize: '13px' }}
@@ -410,12 +472,26 @@ export default function ProjectModal({
                               </span>
 
                               {project && project.type === 'external' && parseFloat(task.price) > 0 && (
-                                <span className="task-price-badge" title={`Ödenen: ${formatPrice(task.paid_price)} / Toplam: ${formatPrice(task.price)}`}>
+                                <span 
+                                  className="task-price-badge" 
+                                  title={`Ödenen: ${formatPrice(task.paid_price)} / Toplam: ${formatPrice(task.price)}${task.due_date ? ` (Vade: ${new Date(task.due_date).toLocaleDateString('tr-TR')})` : ''}`}
+                                >
                                   {parseFloat(task.paid_price) > 0 ? (
                                     <>Ödenen: {formatPrice(task.paid_price)} / {formatPrice(task.price)}</>
                                   ) : (
                                     formatPrice(task.price)
                                   )}
+                                  {task.due_date && ` — Vade: ${new Date(task.due_date).toLocaleDateString('tr-TR')}`}
+                                </span>
+                              )}
+
+                              {project && project.type === 'external' && hasOverduePayment(task) && (
+                                <span 
+                                  className="task-weight-badge" 
+                                  style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', fontWeight: 600 }}
+                                  title="Son ödeme tarihi geçmiş!"
+                                >
+                                  Gecikmiş Ödeme!
                                 </span>
                               )}
                             </div>

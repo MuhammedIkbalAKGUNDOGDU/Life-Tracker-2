@@ -17,6 +17,7 @@ import RoutinesDashboard from './components/RoutinesDashboard';
 import JournalDashboard from './components/JournalDashboard';
 import FinanceDashboard from './components/FinanceDashboard';
 import PendingPayments from './components/PendingPayments';
+import UpcomingInstallments from './components/UpcomingInstallments';
 import { 
   Activity, 
   FolderKanban, 
@@ -1357,7 +1358,8 @@ export default function App() {
     .filter(p => selectedClient === 'all' || p.client === selectedClient);
 
   return (
-    <div className={`app-layout ${theme === 'light' ? 'light-theme' : ''}`}>
+    <div className={theme === 'light' ? 'light-theme' : ''}>
+      <div className="app-layout">
       {/* Background Ambient Lights */}
       <div className="glow-orb orb-1"></div>
       <div className="glow-orb orb-2"></div>
@@ -1428,6 +1430,12 @@ export default function App() {
           <>
             {/* Dashboard Stat Cards */}
             <KPIStats projects={projects} />
+
+            {/* Yaklaşan Taksitler Panel */}
+            <UpcomingInstallments
+              projects={projects}
+              onOpenProject={handleOpenProjectById}
+            />
 
             {/* Kalan Ödemeler (Pending Payments) Panel */}
             <PendingPayments
@@ -1916,6 +1924,7 @@ export default function App() {
           })()
         )}
       </main>
+    </div>
 
       {/* Project Management Modal */}
       <ProjectModal

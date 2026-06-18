@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS project_tasks (
     paid_price NUMERIC(12, 2) DEFAULT 0.00,
     description TEXT DEFAULT '',
     is_completed BOOLEAN DEFAULT FALSE,
+    due_date DATE DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

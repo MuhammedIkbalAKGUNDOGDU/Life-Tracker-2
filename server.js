@@ -27,6 +27,17 @@ pool.query('SELECT NOW()', (err, res) => {
     console.error('❌ PostgreSQL Database Connection Error:', err.message);
   } else {
     console.log('✅ PostgreSQL Database Connected Successfully at:', res.rows[0].now);
+    // Auto-migrate to add due_date column if not exists
+    pool.query(`
+      ALTER TABLE project_tasks 
+      ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL;
+    `, (migrateErr) => {
+      if (migrateErr) {
+        console.error('❌ Database migration error (adding due_date column):', migrateErr.message);
+      } else {
+        console.log('✅ Database migration successful: project_tasks.due_date column verified.');
+      }
+    });
   }
 });
 
@@ -52,7 +63,8 @@ app.get('/api/projects', async (req, res) => {
               'price', t.price, 
               'paid_price', t.paid_price,
               'description', t.description,
-              'is_completed', t.is_completed
+              'is_completed', t.is_completed,
+              'due_date', t.due_date
             ) ORDER BY t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
           '[]'
@@ -162,7 +174,8 @@ app.put('/api/projects/:id', async (req, res) => {
               'price', t.price, 
               'paid_price', t.paid_price,
               'description', t.description,
-              'is_completed', t.is_completed
+              'is_completed', t.is_completed,
+              'due_date', t.due_date
             ) ORDER BY t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
           '[]'
@@ -199,7 +212,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 // 5. ADD TASK TO A PROJECT
 app.post('/api/projects/:id/tasks', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price, paid_price, description } = req.body;
+  const { title, weight, price, paid_price, description, due_date } = req.body;
   try {
     const checkProject = await pool.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (checkProject.rows.length === 0) {
@@ -207,8 +220,8 @@ app.post('/api/projects/:id/tasks', async (req, res) => {
     }
 
     const query = `
-      INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description, due_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
     const { rows } = await pool.query(query, [
@@ -217,7 +230,8 @@ app.post('/api/projects/:id/tasks', async (req, res) => {
       weight || 1, 
       price || 0.00, 
       paid_price || 0.00, 
-      description || ''
+      description || '',
+      due_date || null
     ]);
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -229,7 +243,7 @@ app.post('/api/projects/:id/tasks', async (req, res) => {
 // 6. UPDATE TASK STATUS (Toggle complete, change title/weight)
 app.put('/api/tasks/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price, paid_price, description, is_completed } = req.body;
+  const { title, weight, price, paid_price, description, is_completed, due_date } = req.body;
   try {
     const getTask = await pool.query('SELECT * FROM project_tasks WHERE id = $1', [id]);
     if (getTask.rows.length === 0) {
@@ -243,11 +257,12 @@ app.put('/api/tasks/:id', async (req, res) => {
     const newPaidPrice = paid_price !== undefined ? paid_price : currentTask.paid_price;
     const newDescription = description !== undefined ? description : currentTask.description;
     const newIsCompleted = is_completed !== undefined ? is_completed : currentTask.is_completed;
+    const newDueDate = due_date !== undefined ? due_date : currentTask.due_date;
 
     const query = `
       UPDATE project_tasks
-      SET title = $1, weight = $2, price = $3, paid_price = $4, description = $5, is_completed = $6
-      WHERE id = $7
+      SET title = $1, weight = $2, price = $3, paid_price = $4, description = $5, is_completed = $6, due_date = $7
+      WHERE id = $8
       RETURNING *;
     `;
     const { rows } = await pool.query(query, [
@@ -257,6 +272,7 @@ app.put('/api/tasks/:id', async (req, res) => {
       newPaidPrice, 
       newDescription, 
       newIsCompleted, 
+      newDueDate,
       id
     ]);
     res.json(rows[0]);
