@@ -21,7 +21,10 @@ export default function ProjectCard({
   onDrop,
   onDragEnd,
   draggedIndex,
-  dragOverIndex
+  dragOverIndex,
+  displayCurrency = 'TRY',
+  hideAmounts = false,
+  usdTryRate = 34.0
 }) {
   const progress = project.progress || 0;
   const tasks = project.tasks || [];
@@ -32,12 +35,26 @@ export default function ProjectCard({
   const totalBudget = tasks.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0);
   const totalPaid = tasks.reduce((sum, t) => sum + (parseFloat(t.paid_price) || 0), 0);
 
+  const convertAmount = (amount, fromCurrency, toCurrency) => {
+    const amt = parseFloat(amount) || 0;
+    const from = fromCurrency || 'TRY';
+    const to = toCurrency || 'TRY';
+    if (from === to) return amt;
+    if (from === 'USD' && to === 'TRY') return amt * usdTryRate;
+    if (from === 'TRY' && to === 'USD') return amt / usdTryRate;
+    return amt;
+  };
+
   const formatPrice = (val) => {
+    if (hideAmounts) {
+      return displayCurrency === 'USD' ? '*** $' : '*** ₺';
+    }
+    const converted = convertAmount(val, 'TRY', displayCurrency);
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
-      currency: 'TRY',
+      currency: displayCurrency,
       maximumFractionDigits: 0
-    }).format(val);
+    }).format(converted);
   };
 
   const isDragging = index === draggedIndex;

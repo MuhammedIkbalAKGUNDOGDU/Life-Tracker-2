@@ -40,9 +40,16 @@ pool.query('SELECT NOW()', (err, res) => {
         amount NUMERIC(12, 2) DEFAULT 0.00,
         due_date DATE DEFAULT NULL,
         description TEXT DEFAULT '',
+        is_paid BOOLEAN DEFAULT FALSE,
+        payment_date DATE DEFAULT NULL,
+        is_cancelled BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE yearly_payments ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE;
+      ALTER TABLE yearly_payments ADD COLUMN IF NOT EXISTS payment_date DATE DEFAULT NULL;
+      ALTER TABLE yearly_payments ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS yearly_payment_options (
         id SERIAL PRIMARY KEY,
@@ -1718,13 +1725,13 @@ app.get('/api/yearly-payments', async (req, res) => {
 
 // 2. CREATE A YEARLY PAYMENT (with items)
 app.post('/api/yearly-payments', async (req, res) => {
-  const { project_id, title, client, due_date, description, items = [] } = req.body;
+  const { project_id, title, client, due_date, description, is_paid, payment_date, is_cancelled, items = [] } = req.body;
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
     const paymentQuery = `
-      INSERT INTO yearly_payments (project_id, title, client, amount, due_date, description)
-      VALUES ($1, $2, $3, 0.00, $4, $5)
+      INSERT INTO yearly_payments (project_id, title, client, amount, due_date, description, is_paid, payment_date, is_cancelled)
+      VALUES ($1, $2, $3, 0.00, $4, $5, $6, $7, $8)
       RETURNING *;
     `;
     const paymentRes = await dbClient.query(paymentQuery, [
@@ -1732,7 +1739,10 @@ app.post('/api/yearly-payments', async (req, res) => {
       title,
       client || '',
       due_date || null,
-      description || ''
+      description || '',
+      is_paid || false,
+      payment_date || null,
+      is_cancelled || false
     ]);
     const newPayment = paymentRes.rows[0];
 
@@ -1750,6 +1760,58 @@ app.post('/api/yearly-payments', async (req, res) => {
           item.currency || 'TRY',
           item.description || ''
         ]);
+      }
+    }
+    
+    // Auto-generate next year's payment if created as paid, and NOT cancelled
+    if (is_paid && !is_cancelled) {
+      let nextDueDate = null;
+      let nextTitle = title;
+      if (due_date) {
+        const d = new Date(due_date);
+        if (!isNaN(d.getTime())) {
+          d.setFullYear(d.getFullYear() + 1);
+          nextDueDate = d.toISOString().split('T')[0];
+          
+          // Try to increment year in title if a 4-digit year exists (e.g., "Hosting 2026" -> "Hosting 2027")
+          const yearRegex = /\b(20\d{2})\b/;
+          const match = title.match(yearRegex);
+          if (match) {
+            const oldYear = parseInt(match[1]);
+            const newYear = oldYear + 1;
+            nextTitle = title.replace(yearRegex, String(newYear));
+          }
+        }
+      }
+
+      const nextPaymentQuery = `
+        INSERT INTO yearly_payments (project_id, title, client, amount, due_date, description, is_paid, payment_date, is_cancelled)
+        VALUES ($1, $2, $3, 0.00, $4, $5, FALSE, NULL, FALSE)
+        RETURNING id;
+      `;
+      const nextPaymentRes = await dbClient.query(nextPaymentQuery, [
+        project_id || null,
+        nextTitle,
+        client || '',
+        nextDueDate,
+        description || ''
+      ]);
+      const nextPaymentId = nextPaymentRes.rows[0].id;
+
+      if (items && items.length > 0) {
+        for (const item of items) {
+          const nextItemQuery = `
+            INSERT INTO yearly_payment_items (yearly_payment_id, category, amount, currency, description)
+            VALUES ($1, $2, $3, $4, $5);
+          `;
+          await dbClient.query(nextItemQuery, [
+            nextPaymentId,
+            item.category,
+            item.amount || 0.00,
+            item.currency || 'TRY',
+            item.description || ''
+          ]);
+        }
       }
     }
     
@@ -1788,14 +1850,23 @@ app.post('/api/yearly-payments', async (req, res) => {
 // 3. UPDATE A YEARLY PAYMENT (with items)
 app.put('/api/yearly-payments/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, client, due_date, description, project_id, items = [] } = req.body;
+  const { title, client, due_date, description, project_id, is_paid, payment_date, is_cancelled, items = [] } = req.body;
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
+    
+    // Fetch old payment status to see if it was paid
+    const oldPaymentRes = await dbClient.query('SELECT is_paid FROM yearly_payments WHERE id = $1', [id]);
+    if (oldPaymentRes.rows.length === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Yearly payment not found' });
+    }
+    const oldPayment = oldPaymentRes.rows[0];
+
     const updatePaymentQuery = `
       UPDATE yearly_payments
-      SET title = $1, client = $2, due_date = $3, description = $4, project_id = $5, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6
+      SET title = $1, client = $2, due_date = $3, description = $4, project_id = $5, is_paid = $6, payment_date = $7, is_cancelled = $8, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $9
       RETURNING *;
     `;
     const updateRes = await dbClient.query(updatePaymentQuery, [
@@ -1804,12 +1875,11 @@ app.put('/api/yearly-payments/:id', async (req, res) => {
       due_date || null,
       description || '',
       project_id || null,
+      is_paid || false,
+      payment_date || null,
+      is_cancelled || false,
       id
     ]);
-    if (updateRes.rows.length === 0) {
-      await dbClient.query('ROLLBACK');
-      return res.status(404).json({ error: 'Yearly payment not found' });
-    }
 
     // Delete existing items
     await dbClient.query('DELETE FROM yearly_payment_items WHERE yearly_payment_id = $1', [id]);
@@ -1828,6 +1898,58 @@ app.put('/api/yearly-payments/:id', async (req, res) => {
           item.currency || 'TRY',
           item.description || ''
         ]);
+      }
+    }
+
+    // Auto-generate next year's payment if transitioned from unpaid to paid, and NOT cancelled
+    if (!oldPayment.is_paid && is_paid && !is_cancelled) {
+      let nextDueDate = null;
+      let nextTitle = title;
+      if (due_date) {
+        const d = new Date(due_date);
+        if (!isNaN(d.getTime())) {
+          d.setFullYear(d.getFullYear() + 1);
+          nextDueDate = d.toISOString().split('T')[0];
+          
+          // Try to increment year in title if a 4-digit year exists (e.g., "Hosting 2026" -> "Hosting 2027")
+          const yearRegex = /\b(20\d{2})\b/;
+          const match = title.match(yearRegex);
+          if (match) {
+            const oldYear = parseInt(match[1]);
+            const newYear = oldYear + 1;
+            nextTitle = title.replace(yearRegex, String(newYear));
+          }
+        }
+      }
+
+      const nextPaymentQuery = `
+        INSERT INTO yearly_payments (project_id, title, client, amount, due_date, description, is_paid, payment_date, is_cancelled)
+        VALUES ($1, $2, $3, 0.00, $4, $5, FALSE, NULL, FALSE)
+        RETURNING id;
+      `;
+      const nextPaymentRes = await dbClient.query(nextPaymentQuery, [
+        project_id || null,
+        nextTitle,
+        client || '',
+        nextDueDate,
+        description || ''
+      ]);
+      const nextPaymentId = nextPaymentRes.rows[0].id;
+
+      if (items && items.length > 0) {
+        for (const item of items) {
+          const nextItemQuery = `
+            INSERT INTO yearly_payment_items (yearly_payment_id, category, amount, currency, description)
+            VALUES ($1, $2, $3, $4, $5);
+          `;
+          await dbClient.query(nextItemQuery, [
+            nextPaymentId,
+            item.category,
+            item.amount || 0.00,
+            item.currency || 'TRY',
+            item.description || ''
+          ]);
+        }
       }
     }
 

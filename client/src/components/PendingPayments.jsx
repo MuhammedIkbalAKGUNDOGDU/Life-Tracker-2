@@ -1,15 +1,36 @@
 import { useState } from 'react';
 import { Coins, ChevronDown, ChevronUp, User } from 'lucide-react';
 
-export default function PendingPayments({ projects = [], onOpenProject }) {
+export default function PendingPayments({ 
+  projects = [], 
+  onOpenProject,
+  displayCurrency = 'TRY',
+  hideAmounts = false,
+  usdTryRate = 34.0
+}) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const fmt = (val) =>
-    new Intl.NumberFormat('tr-TR', {
+  const convertAmount = (amount, fromCurrency, toCurrency) => {
+    const amt = parseFloat(amount) || 0;
+    const from = fromCurrency || 'TRY';
+    const to = toCurrency || 'TRY';
+    if (from === to) return amt;
+    if (from === 'USD' && to === 'TRY') return amt * usdTryRate;
+    if (from === 'TRY' && to === 'USD') return amt / usdTryRate;
+    return amt;
+  };
+
+  const fmt = (val) => {
+    if (hideAmounts) {
+      return displayCurrency === 'USD' ? '*** $' : '*** ₺';
+    }
+    const converted = convertAmount(val, 'TRY', displayCurrency);
+    return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
-      currency: 'TRY',
+      currency: displayCurrency,
       maximumFractionDigits: 0,
-    }).format(val);
+    }).format(converted);
+  };
 
   const pendingItems = [];
   for (const project of projects) {

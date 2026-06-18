@@ -45,7 +45,9 @@ import {
   Lock,
   Coins,
   FileText,
-  CalendarRange
+  CalendarRange,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export default function App() {
@@ -160,6 +162,24 @@ export default function App() {
 
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
+
+  // Shared mask & currency preferences
+  const [displayCurrency, setDisplayCurrency] = useState(() => {
+    return localStorage.getItem('display_currency') || 'TRY';
+  });
+  const [hideAmounts, setHideAmounts] = useState(() => {
+    return localStorage.getItem('hide_amounts') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('display_currency', displayCurrency);
+  }, [displayCurrency]);
+
+  useEffect(() => {
+    localStorage.setItem('hide_amounts', String(hideAmounts));
+  }, [hideAmounts]);
+
+  const usdTryRate = financePrices?.USD?.TRY || 34.0;
 
   useEffect(() => {
     localStorage.setItem('goals_view_mode', goalsViewMode);
@@ -1468,12 +1488,18 @@ export default function App() {
             <UpcomingInstallments
               projects={projects}
               onOpenProject={handleOpenProjectById}
+              displayCurrency={displayCurrency}
+              hideAmounts={hideAmounts}
+              usdTryRate={usdTryRate}
             />
 
             {/* Kalan Ödemeler (Pending Payments) Panel */}
             <PendingPayments
               projects={projects}
               onOpenProject={handleOpenProjectById}
+              displayCurrency={displayCurrency}
+              hideAmounts={hideAmounts}
+              usdTryRate={usdTryRate}
             />
 
             {/* Action Bar (Filters & Adding Button) */}
@@ -1543,6 +1569,57 @@ export default function App() {
                     ))}
                   </select>
                 )}
+
+                {/* Hide/Show Amounts Eye Button */}
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40px', width: '40px' }} 
+                  onClick={() => setHideAmounts(!hideAmounts)}
+                  title={hideAmounts ? "Tutarları Göster" : "Tutarları Gizle"}
+                >
+                  {hideAmounts ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+
+                {/* Currency Toggle Buttons */}
+                <div className="glass-card" style={{ display: 'flex', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', gap: '2px', height: '40px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={`btn-sm`}
+                    style={{ 
+                      padding: '6px 12px', 
+                      fontSize: '12px', 
+                      borderRadius: '6px', 
+                      border: 'none', 
+                      cursor: 'pointer',
+                      background: displayCurrency === 'TRY' ? 'var(--primary)' : 'transparent',
+                      color: displayCurrency === 'TRY' ? '#ffffff' : 'var(--text-muted)',
+                      fontWeight: 600,
+                      height: '34px'
+                    }}
+                    onClick={() => setDisplayCurrency('TRY')}
+                  >
+                    ₺ TL
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-sm`}
+                    style={{ 
+                      padding: '6px 12px', 
+                      fontSize: '12px', 
+                      borderRadius: '6px', 
+                      border: 'none', 
+                      cursor: 'pointer',
+                      background: displayCurrency === 'USD' ? 'var(--primary)' : 'transparent',
+                      color: displayCurrency === 'USD' ? '#ffffff' : 'var(--text-muted)',
+                      fontWeight: 600,
+                      height: '34px'
+                    }}
+                    onClick={() => setDisplayCurrency('USD')}
+                  >
+                    $ USD
+                  </button>
+                </div>
               </div>
               
               <button className="btn btn-primary" onClick={handleCreateClick}>
@@ -1597,6 +1674,9 @@ export default function App() {
                       onDragEnd={handleProjectDragEnd}
                       draggedIndex={draggedProjectIdx}
                       dragOverIndex={dragOverProjectIdx}
+                      displayCurrency={displayCurrency}
+                      hideAmounts={hideAmounts}
+                      usdTryRate={usdTryRate}
                     />
                   ))}
                 </div>
@@ -1826,6 +1906,11 @@ export default function App() {
           <YearlyPaymentsDashboard 
             projects={projects}
             onOpenProject={handleOpenProjectById}
+            displayCurrency={displayCurrency}
+            setDisplayCurrency={setDisplayCurrency}
+            hideAmounts={hideAmounts}
+            setHideAmounts={setHideAmounts}
+            usdTryRate={usdTryRate}
           />
         ) : (
           /* Milestones View */
@@ -1979,6 +2064,9 @@ export default function App() {
         onDeleteTask={deleteTask}
         onUpdateTask={updateTask}
         onTransferToYearly={transferProjectToYearly}
+        displayCurrency={displayCurrency}
+        hideAmounts={hideAmounts}
+        usdTryRate={usdTryRate}
       />
 
       {/* Goal Management Modal */}

@@ -10,7 +10,10 @@ export default function ProjectModal({
   onToggleTask,
   onDeleteTask,
   onUpdateTask,
-  onTransferToYearly
+  onTransferToYearly,
+  displayCurrency = 'TRY',
+  hideAmounts = false,
+  usdTryRate = 34.0
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -174,12 +177,26 @@ export default function ProjectModal({
     return 'var(--warning)';
   };
 
+  const convertAmount = (amount, fromCurrency, toCurrency) => {
+    const amt = parseFloat(amount) || 0;
+    const from = fromCurrency || 'TRY';
+    const to = toCurrency || 'TRY';
+    if (from === to) return amt;
+    if (from === 'USD' && to === 'TRY') return amt * usdTryRate;
+    if (from === 'TRY' && to === 'USD') return amt / usdTryRate;
+    return amt;
+  };
+
   const formatPrice = (val) => {
+    if (hideAmounts) {
+      return displayCurrency === 'USD' ? '*** $' : '*** ₺';
+    }
+    const converted = convertAmount(val, 'TRY', displayCurrency);
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
-      currency: 'TRY',
+      currency: displayCurrency,
       maximumFractionDigits: 0
-    }).format(val);
+    }).format(converted);
   };
 
   return (
