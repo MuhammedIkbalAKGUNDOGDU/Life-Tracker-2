@@ -201,7 +201,7 @@ export default function ProjectModal({
 
   return (
     <div className="modal-backdrop open" onClick={onClose}>
-      <div className="modal glass-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-xl glass-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{project ? 'Projeyi Düzenle & Yönet' : 'Yeni Proje Oluştur'}</h2>
           <button className="btn-close" onClick={onClose} type="button">

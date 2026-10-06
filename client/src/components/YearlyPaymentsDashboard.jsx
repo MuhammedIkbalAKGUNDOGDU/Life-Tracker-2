@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit3, Trash2, Calendar, User, FileText, X, ExternalLink, Settings, BarChart2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit3, Trash2, Calendar, User, FileText, X, ExternalLink, Settings, BarChart2 } from 'lucide-react';
 
 export default function YearlyPaymentsDashboard({ 
   projects = [], 
@@ -8,7 +8,9 @@ export default function YearlyPaymentsDashboard({
   setDisplayCurrency,
   hideAmounts,
   setHideAmounts,
-  usdTryRate: propUsdTryRate
+  usdTryRate: propUsdTryRate,
+  onPaymentsLoaded,
+  embedded = false
 }) {
   const [payments, setPayments] = useState([]);
   const [options, setOptions] = useState([]);
@@ -88,6 +90,7 @@ export default function YearlyPaymentsDashboard({
       if (!res.ok) throw new Error('Yıllık ödemeler yüklenirken bir hata oluştu.');
       const data = await res.json();
       setPayments(data);
+      if (onPaymentsLoaded) onPaymentsLoaded(data);
     } catch (err) {
       console.error(err);
       setError(true);
@@ -107,24 +110,9 @@ export default function YearlyPaymentsDashboard({
     }
   };
 
-  const fetchExchangeRate = async () => {
-    try {
-      const res = await fetch('/api/finance/prices');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.USD && data.USD.TRY) {
-          setUsdTryRate(data.USD.TRY);
-        }
-      }
-    } catch (err) {
-      console.error('Döviz kuru alınamadı:', err);
-    }
-  };
-
   useEffect(() => {
     fetchPayments();
     fetchOptions();
-    fetchExchangeRate();
   }, []);
 
   const handleAddOption = async (e) => {
@@ -425,61 +413,12 @@ export default function YearlyPaymentsDashboard({
       {/* Header bar */}
       <section className="action-bar-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-main)' }}>Yıllık Ödeme Takibi</h2>
+          <h2 style={{ fontSize: embedded ? '18px' : '24px', fontWeight: 700, color: 'var(--text-main)' }}>Yıllık Ödeme Kayıtları</h2>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Yıllık ödemelerinizi kalem kalem takip edin. {usdTryRate ? `(Güncel Kur: 1 $ = ${usdTryRate.toFixed(2)} ₺)` : ''}
+            Hosting, domain, bakım gibi yıllık ödemeleri kalem kalem ekleyin. Ödendi işaretlenince gelecek yılın kaydı otomatik oluşur.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Hide/Show Amounts Eye Button */}
-          <button 
-            type="button" 
-            className="btn btn-secondary" 
-            style={{ padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
-            onClick={() => setHideAmounts(!hideAmounts)}
-            title={hideAmounts ? "Tutarları Göster" : "Tutarları Gizle"}
-          >
-            {hideAmounts ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-
-          {/* Currency Toggle Buttons */}
-          <div className="glass-card" style={{ display: 'flex', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', gap: '2px' }}>
-            <button
-              type="button"
-              className={`btn-sm`}
-              style={{ 
-                padding: '6px 12px', 
-                fontSize: '12px', 
-                borderRadius: '6px', 
-                border: 'none', 
-                cursor: 'pointer',
-                background: displayCurrency === 'TRY' ? 'var(--primary)' : 'transparent',
-                color: displayCurrency === 'TRY' ? '#ffffff' : 'var(--text-muted)',
-                fontWeight: 600
-              }}
-              onClick={() => setDisplayCurrency('TRY')}
-            >
-              ₺ TL
-            </button>
-            <button
-              type="button"
-              className={`btn-sm`}
-              style={{ 
-                padding: '6px 12px', 
-                fontSize: '12px', 
-                borderRadius: '6px', 
-                border: 'none', 
-                cursor: 'pointer',
-                background: displayCurrency === 'USD' ? 'var(--primary)' : 'transparent',
-                color: displayCurrency === 'USD' ? '#ffffff' : 'var(--text-muted)',
-                fontWeight: 600
-              }}
-              onClick={() => setDisplayCurrency('USD')}
-            >
-              $ USD
-            </button>
-          </div>
-
           <button className="btn btn-secondary" onClick={() => setIsOptionsModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Settings size={16} /> Kategorileri Yönet
           </button>

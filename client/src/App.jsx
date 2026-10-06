@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import confetti from 'canvas-confetti';
 import KPIStats from './components/KPIStats';
 import ProjectCard from './components/ProjectCard';
 import ProjectModal from './components/ProjectModal';
@@ -10,17 +9,18 @@ import HabitCard from './components/HabitCard';
 import HabitMatrix from './components/HabitMatrix';
 import HabitModal from './components/HabitModal';
 import HabitKPIs from './components/HabitKPIs';
-import MilestoneCard from './components/MilestoneCard';
-import MilestoneModal from './components/MilestoneModal';
-import MilestoneAnalyticsModal from './components/MilestoneAnalyticsModal';
 import RoutinesDashboard from './components/RoutinesDashboard';
+import HomeDashboard from './components/HomeDashboard';
+import ReceivablesDashboard from './components/ReceivablesDashboard';
+import DailyDashboard from './components/DailyDashboard';
+import { buildReceivables } from './receivables';
 import JournalDashboard from './components/JournalDashboard';
-import FinanceDashboard from './components/FinanceDashboard';
 import PendingPayments from './components/PendingPayments';
 import UpcomingInstallments from './components/UpcomingInstallments';
-import YearlyPaymentsDashboard from './components/YearlyPaymentsDashboard';
 import { 
   Activity, 
+  Home,
+  Wallet,
   FolderKanban, 
   Target, 
   Sun, 
@@ -39,16 +39,26 @@ import {
   LayoutGrid,
   List,
   Flame,
-  Trophy,
   BookOpen,
   Sparkles,
-  Lock,
-  Coins,
-  FileText,
-  CalendarRange,
   Eye,
   EyeOff
 } from 'lucide-react';
+
+const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables'];
+const LEGACY_TABS = { habits: 'daily', routines: 'daily', yearly_payments: 'receivables' };
+const NAV_TABS = [
+  { id: 'home', label: 'Ana Sayfa', icon: <Home /> },
+  { id: 'projects', label: 'Projeler', icon: <FolderKanban /> },
+  { id: 'goals', label: 'Hedefler', icon: <Target /> },
+  { id: 'daily', label: 'Günlük Düzen', icon: <Flame /> },
+  { id: 'receivables', label: 'Alacaklar', icon: <Wallet /> },
+  { id: 'journal', label: 'Günlük', icon: <BookOpen /> }
+];
+const resolveTab = (hash) => {
+  const id = LEGACY_TABS[hash] || hash;
+  return VALID_TABS.includes(id) ? id : 'home';
+};
 
 export default function App() {
   const [projects, setProjects] = useState([]);
@@ -59,11 +69,7 @@ export default function App() {
   
   // Theme & Navigation Sidebar State
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
-  const [activeTab, setActiveTab] = useState(() => {
-    const hash = window.location.hash.slice(1);
-    const validTabs = ['projects', 'goals', 'habits', 'routines', 'journal', 'milestones', 'finance', 'yearly_payments'];
-    return validTabs.includes(hash) ? hash : 'projects';
-  });
+  const [activeTab, setActiveTab] = useState(() => resolveTab(window.location.hash.slice(1)));
 
   // Sync activeTab state changes to URL hash
   useEffect(() => {
@@ -75,63 +81,15 @@ export default function App() {
   // Listen to browser forward/back hash navigation changes
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1);
-      const validTabs = ['projects', 'goals', 'habits', 'routines', 'journal', 'milestones', 'finance', 'yearly_payments'];
-      if (validTabs.includes(hash)) {
-        setActiveTab(hash);
-      }
+      setActiveTab(resolveTab(window.location.hash.slice(1)));
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
   
-  // Sidebar tabs drag-and-drop state
-  const [tabs, setTabs] = useState(() => {
-    const savedTabs = localStorage.getItem('sidebar_tabs_order');
-    const defaultTabs = [
-      { id: 'projects', label: 'Projeler', icon: 'projects' },
-      { id: 'goals', label: 'Hedefler', icon: 'goals' },
-      { id: 'habits', label: 'Alışkanlıklar', icon: 'habits' },
-      { id: 'routines', label: 'Rutinler', icon: 'routines' },
-      { id: 'journal', label: 'Günlük', icon: 'journal' },
-      { id: 'milestones', label: 'Başarımlar', icon: 'milestones' },
-      { id: 'finance', label: 'Finans', icon: 'finance' },
-      { id: 'yearly_payments', label: 'Yıllık Ödemeler', icon: 'yearly_payments' }
-    ];
-    if (savedTabs) {
-      try { 
-        const parsed = JSON.parse(savedTabs); 
-        if (!parsed.some(t => t.id === 'habits')) {
-          parsed.push({ id: 'habits', label: 'Alışkanlıklar', icon: 'habits' });
-        }
-        if (!parsed.some(t => t.id === 'routines')) {
-          parsed.push({ id: 'routines', label: 'Rutinler', icon: 'routines' });
-        }
-        if (!parsed.some(t => t.id === 'journal')) {
-          parsed.push({ id: 'journal', label: 'Günlük', icon: 'journal' });
-        }
-        if (!parsed.some(t => t.id === 'milestones')) {
-          parsed.push({ id: 'milestones', label: 'Başarımlar', icon: 'milestones' });
-        }
-        if (!parsed.some(t => t.id === 'finance')) {
-          parsed.push({ id: 'finance', label: 'Finans', icon: 'finance' });
-        }
-        if (!parsed.some(t => t.id === 'yearly_payments')) {
-          parsed.push({ id: 'yearly_payments', label: 'Yıllık Ödemeler', icon: 'yearly_payments' });
-        }
-        return parsed; 
-      } catch(e) { }
-    }
-    return defaultTabs;
-  });
-
   // Project Drag and Drop State
   const [draggedProjectIdx, setDraggedProjectIdx] = useState(null);
   const [dragOverProjectIdx, setDragOverProjectIdx] = useState(null);
-
-  // Tab Drag and Drop State
-  const [draggedTabIdx, setDraggedTabIdx] = useState(null);
-  const [dragOverTabIdx, setDragOverTabIdx] = useState(null);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -158,15 +116,6 @@ export default function App() {
   const [draggedHabitIdx, setDraggedHabitIdx] = useState(null);
   const [dragOverHabitIdx, setDragOverHabitIdx] = useState(null);
 
-  // Milestones States
-  const [milestones, setMilestones] = useState([]);
-  const [milestoneStats, setMilestoneStats] = useState({ completedProjects: 0, completedGoals: 0, maxHabitStreak: 0 });
-  const [milestonesLoading, setMilestonesLoading] = useState(false);
-  const [milestonesError, setMilestonesError] = useState(false);
-  const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
-  const [isMilestoneAnalyticsOpen, setIsMilestoneAnalyticsOpen] = useState(false);
-  const [milestoneToUnlock, setMilestoneToUnlock] = useState(null);
-
   // Routines States
   const [routines, setRoutines] = useState([]);
   const [routinesLoading, setRoutinesLoading] = useState(false);
@@ -177,12 +126,9 @@ export default function App() {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalError, setJournalError] = useState(false);
 
-  // Finance States
-  const [financeAssets, setFinanceAssets] = useState([]);
-  const [financeTransactions, setFinanceTransactions] = useState([]);
-  const [financePrices, setFinancePrices] = useState(null);
-  const [financeLoading, setFinanceLoading] = useState(false);
-  const [financeError, setFinanceError] = useState(false);
+  // Yearly payments (shared by Home & Alacaklar)
+  const [yearlyPayments, setYearlyPayments] = useState([]);
+  const [usdTryRate, setUsdTryRate] = useState(34.0);
 
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
@@ -203,8 +149,6 @@ export default function App() {
     localStorage.setItem('hide_amounts', String(hideAmounts));
   }, [hideAmounts]);
 
-  const usdTryRate = financePrices?.USD?.TRY || 34.0;
-
   useEffect(() => {
     localStorage.setItem('goals_view_mode', goalsViewMode);
   }, [goalsViewMode]);
@@ -217,21 +161,11 @@ export default function App() {
     fetchProjects();
     fetchGoals();
     fetchHabits();
-    fetchMilestones();
     fetchRoutines();
     fetchJournal();
-    fetchFinanceData();
+    fetchYearlyPayments();
+    fetchRate();
   }, []);
-
-  // Sync / Auto-evaluate milestones whenever system data updates
-  useEffect(() => {
-    if (milestones.length > 0) {
-      const timer = setTimeout(() => {
-        fetchMilestones(true);
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [projects, goals, habits]);
 
   useEffect(() => {
     if (theme === 'light') {
@@ -353,7 +287,7 @@ export default function App() {
       
       if (!res.ok) throw new Error('Proje yıllık ödemelere aktarılamadı.');
       
-      showToast('Proje yıllık ödeme listesine aktarıldı. Detayları Yıllık Ödemeler sekmesinden düzenleyebilirsiniz.', 'success');
+      showToast('Proje yıllık ödeme listesine aktarıldı. Detayları Alacaklar sekmesinden düzenleyebilirsiniz.', 'success');
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -607,41 +541,6 @@ export default function App() {
   const handleProjectDragEnd = () => {
     setDraggedProjectIdx(null);
     setDragOverProjectIdx(null);
-  };
-
-  // --- SIDEBAR NAV TABS DRAG AND DROP HANDLERS ---
-  const handleTabDragStart = (e, index) => {
-    setDraggedTabIdx(index);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleTabDragOver = (e, index) => {
-    e.preventDefault();
-    if (draggedTabIdx === null || draggedTabIdx === index) return;
-    setDragOverTabIdx(index);
-  };
-
-  const handleTabDrop = (e, index) => {
-    e.preventDefault();
-    if (draggedTabIdx === null || draggedTabIdx === index) return;
-
-    const reorderedTabs = [...tabs];
-    const draggedTab = reorderedTabs[draggedTabIdx];
-
-    reorderedTabs.splice(draggedTabIdx, 1);
-    reorderedTabs.splice(index, 0, draggedTab);
-
-    setTabs(reorderedTabs);
-    localStorage.setItem('sidebar_tabs_order', JSON.stringify(reorderedTabs));
-    showToast('Sekme sıralaması güncellendi.', 'success');
-    
-    setDraggedTabIdx(null);
-    setDragOverTabIdx(null);
-  };
-
-  const handleTabDragEnd = () => {
-    setDraggedTabIdx(null);
-    setDragOverTabIdx(null);
   };
 
   const getSortedGoals = (goalsList) => {
@@ -1032,104 +931,6 @@ export default function App() {
     setDragOverHabitIdx(null);
   };
 
-  // === MILESTONES ACTIONS & OPERATION HANDLERS ===
-  const celebrate = () => {
-    confetti({
-      particleCount: 150,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
-  };
-
-  const fetchMilestones = async (silent = false) => {
-    if (!silent) setMilestonesLoading(true);
-    setMilestonesError(false);
-    try {
-      const res = await fetch('/api/milestones');
-      if (!res.ok) throw new Error('Başarımlar yüklenirken bir hata oluştu.');
-      const data = await res.json();
-      
-      const newUnlockedCount = data.milestones.filter(m => m.is_unlocked).length;
-      
-      setMilestones(prev => {
-        const oldUnlockedCount = prev.filter(m => m.is_unlocked).length;
-        if (prev.length > 0 && newUnlockedCount > oldUnlockedCount) {
-          celebrate();
-          showToast('Tebrikler! Yeni bir başarım kazandınız! 🏆', 'success');
-        }
-        return data.milestones;
-      });
-      setMilestoneStats(data.stats);
-    } catch (err) {
-      console.error(err);
-      setMilestonesError(true);
-    } finally {
-      if (!silent) setMilestonesLoading(false);
-    }
-  };
-
-  const saveMilestone = async (milestoneData) => {
-    try {
-      const res = await fetch('/api/milestones', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(milestoneData)
-      });
-      if (!res.ok) throw new Error('Başarım eklenirken hata oluştu.');
-      const data = await res.json();
-      setMilestones(prev => [data, ...prev]);
-      showToast('Yeni başarım başarıyla eklendi.', 'success');
-      setIsMilestoneModalOpen(false);
-      fetchMilestones(true);
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
-
-  const unlockMilestone = async (id) => {
-    try {
-      const res = await fetch(`/api/milestones/${id}/unlock`, {
-        method: 'PUT'
-      });
-      if (!res.ok) throw new Error('Kilidi açma işlemi başarısız.');
-      const data = await res.json();
-      setMilestones(prev => prev.map(m => m.id === id ? data : m));
-      celebrate();
-      showToast('Tebrikler! Kilometre taşının kilidini açtınız! 🏆', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
-
-  const deleteMilestone = async (id) => {
-    if (window.confirm('Bu başarımı silmek istediğinize emin misiniz?')) {
-      try {
-        const res = await fetch(`/api/milestones/${id}`, {
-          method: 'DELETE'
-        });
-        if (!res.ok) throw new Error('Başarım silinemedi.');
-        setMilestones(prev => prev.filter(m => m.id !== id));
-        showToast('Başarım silindi.', 'info');
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
-    }
-  };
-
-  const renderTabIcon = (iconName) => {
-    switch (iconName) {
-      case 'projects': return <FolderKanban />;
-      case 'goals': return <Target />;
-      case 'habits': return <Flame />;
-      case 'routines': return <Sparkles />;
-      case 'journal': return <BookOpen />;
-      case 'milestones': return <Trophy />;
-      case 'finance': return <Coins />;
-      case 'yearly_payments': return <CalendarRange />;
-      default: return <Info />;
-    }
-  };
-
   // === ROUTINES ACTIONS & OPERATION HANDLERS ===
   const fetchRoutines = async () => {
     setRoutinesLoading(true);
@@ -1333,98 +1134,30 @@ export default function App() {
     }
   };
 
-  // === FINANCE ACTIONS & OPERATION HANDLERS ===
-  const fetchFinanceData = async () => {
-    setFinanceLoading(true);
-    setFinanceError(false);
+  // === YEARLY PAYMENTS & EXCHANGE RATE ===
+  const fetchYearlyPayments = async () => {
     try {
-      const [pricesRes, assetsRes, txsRes] = await Promise.all([
-        fetch('/api/finance/prices'),
-        fetch('/api/finance/assets'),
-        fetch('/api/finance/transactions')
-      ]);
-      
-      if (!pricesRes.ok || !assetsRes.ok || !txsRes.ok) throw new Error('Finans verileri yüklenemedi.');
-      
-      const [prices, assets, txs] = await Promise.all([
-        pricesRes.json(),
-        assetsRes.json(),
-        txsRes.json()
-      ]);
-      
-      setFinancePrices(prices);
-      setFinanceAssets(assets);
-      setFinanceTransactions(txs);
+      const res = await fetch('/api/yearly-payments');
+      if (res.ok) setYearlyPayments(await res.json());
     } catch (err) {
       console.error(err);
-      setFinanceError(true);
-    } finally {
-      setFinanceLoading(false);
     }
   };
 
-  const saveFinanceAsset = async (assetData) => {
+  const fetchRate = async () => {
     try {
-      const res = await fetch('/api/finance/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(assetData)
-      });
-      if (!res.ok) throw new Error('Varlık kaydedilemedi.');
-      await fetchFinanceData();
-      showToast('Varlık başarıyla portföye eklendi/güncellendi.', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
-
-  const deleteFinanceAsset = async (id) => {
-    if (window.confirm('Bu varlığı portföyünüzden silmek istediğinize emin misiniz?')) {
-      try {
-        const res = await fetch(`/api/finance/assets/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Varlık silinemedi.');
-        setFinanceAssets(prev => prev.filter(a => a.id !== id));
-        showToast('Varlık portföyden silindi.', 'info');
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
-    }
-  };
-
-  const saveFinanceTransaction = async (txData) => {
-    try {
-      const res = await fetch('/api/finance/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(txData)
-      });
-      if (!res.ok) throw new Error('İşlem kaydedilemedi.');
-      const data = await res.json();
-      
-      if (Array.isArray(data)) {
-        setFinanceTransactions(prev => [...data, ...prev]);
-        showToast(`${data.length} taksit işlemi başarıyla oluşturuldu.`, 'success');
-      } else {
-        setFinanceTransactions(prev => [data, ...prev]);
-        showToast('Finansal işlem başarıyla kaydedildi.', 'success');
+      const res = await fetch('/api/rates');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.USD?.TRY) setUsdTryRate(data.USD.TRY);
       }
     } catch (err) {
-      showToast(err.message, 'error');
+      console.error('Döviz kuru alınamadı:', err);
     }
   };
 
-  const deleteFinanceTransaction = async (id) => {
-    if (window.confirm('Bu finansal işlemi silmek istediğinize emin misiniz?')) {
-      try {
-        const res = await fetch(`/api/finance/transactions/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('İşlem silinemedi.');
-        setFinanceTransactions(prev => prev.filter(t => t.id !== id));
-        showToast('İşlem silindi.', 'info');
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
-    }
-  };
+  const receivables = buildReceivables(projects, yearlyPayments, usdTryRate);
+  const reminderCount = receivables.reminders.filter(r => r.diffDays <= 7).length;
 
   // Compute unique clients list
   const uniqueClients = [...new Set(projects.map(p => p.client).filter(c => c && c.trim() !== ''))];
@@ -1453,25 +1186,19 @@ export default function App() {
           </div>
 
           <nav className="sidebar-nav">
-            {tabs.map((tab, idx) => {
-              const isTabDragging = idx === draggedTabIdx;
-              const isTabDragOver = idx === dragOverTabIdx;
-              return (
-                <button
-                  key={tab.id}
-                  className={`sidebar-nav-btn ${activeTab === tab.id ? 'active' : ''} ${isTabDragging ? 'dragging' : ''} ${isTabDragOver ? 'drag-over' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  draggable
-                  onDragStart={(e) => handleTabDragStart(e, idx)}
-                  onDragOver={(e) => handleTabDragOver(e, idx)}
-                  onDrop={(e) => handleTabDrop(e, idx)}
-                  onDragEnd={handleTabDragEnd}
-                >
-                  {renderTabIcon(tab.icon)}
-                  {tab.label}
-                </button>
-              );
-            })}
+            {NAV_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                className={`sidebar-nav-btn ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.icon}
+                {tab.label}
+                {tab.id === 'receivables' && reminderCount > 0 && (
+                  <span className="nav-badge" title="Bu hafta takip edilmesi gereken ödeme">{reminderCount}</span>
+                )}
+              </button>
+            ))}
           </nav>
         </div>
 
@@ -1815,91 +1542,26 @@ export default function App() {
               )}
             </section>
           </>
-        ) : activeTab === 'habits' ? (
-          /* Habits View */
-          <>
-            {/* Dashboard Stat Cards */}
-            <HabitKPIs habits={habits} />
-
-            {/* Action Bar (Filters & Adding Button) */}
-            <section className="action-bar-section">
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div className="filters glass-card" style={{ display: 'flex', padding: '4px', gap: '4px' }}>
-                  <button 
-                    className={`filter-btn ${habitsViewMode === 'weekly' ? 'active' : ''}`}
-                    onClick={() => setHabitsViewMode('weekly')}
-                    title="Haftalık Görünüm"
-                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
-                  >
-                    Haftalık Liste
-                  </button>
-                  <button 
-                    className={`filter-btn ${habitsViewMode === 'monthly' ? 'active' : ''}`}
-                    onClick={() => setHabitsViewMode('monthly')}
-                    title="Aylık Görünüm"
-                    style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}
-                  >
-                    Aylık Matris
-                  </button>
-                </div>
-              </div>
-              
-              <button className="btn btn-primary" onClick={handleCreateHabitClick}>
-                <Plus /> Yeni Alışkanlık Ekle
-              </button>
-            </section>
-
-            {/* Habits Display Grid / List / Matrix */}
-            <section className="projects-grid-section">
-              {habitsLoading ? (
-                <div className="loading-state">
-                  <div className="spinner"></div>
-                  <p>Alışkanlıklar yükleniyor...</p>
-                </div>
-              ) : habitsError ? (
-                <div className="empty-state">
-                  <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
-                  <h3>Bağlantı Hatası</h3>
-                  <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
-                  <button className="btn btn-secondary" onClick={fetchHabits}>
-                    <RefreshCw /> Tekrar Dene
-                  </button>
-                </div>
-              ) : habits.length === 0 ? (
-                <div className="empty-state">
-                  <Flame style={{ width: '56px', height: '56px' }} />
-                  <h3>Alışkanlık Bulunamadı</h3>
-                  <p>Henüz hiçbir alışkanlık oluşturmadınız.</p>
-                  <button className="btn btn-primary" onClick={handleCreateHabitClick}>
-                    <Plus /> İlk Alışkanlığı Ekle
-                  </button>
-                </div>
-              ) : habitsViewMode === 'monthly' ? (
-                <HabitMatrix habits={habits} onLogHabit={logHabit} />
-              ) : (
-                <div className="goals-list-container">
-                  {habits.map((habit, idx) => (
-                    <HabitCard 
-                      key={habit.id} 
-                      habit={habit} 
-                      index={idx}
-                      onEdit={handleEditHabitClick}
-                      onDelete={deleteHabit}
-                      onLogHabit={logHabit}
-                      onDragStart={handleHabitDragStart}
-                      onDragOver={handleHabitDragOver}
-                      onDrop={handleHabitDrop}
-                      onDragEnd={handleHabitDragEnd}
-                      draggedIndex={draggedHabitIdx}
-                      dragOverIndex={dragOverHabitIdx}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
-        ) : activeTab === 'routines' ? (
-          <RoutinesDashboard 
+        ) : activeTab === 'daily' ? (
+          <DailyDashboard
+            habits={habits}
+            habitsLoading={habitsLoading}
+            habitsError={habitsError}
+            habitsViewMode={habitsViewMode}
+            setHabitsViewMode={setHabitsViewMode}
+            onRetryHabits={fetchHabits}
+            onCreateHabit={handleCreateHabitClick}
+            onEditHabit={handleEditHabitClick}
+            onDeleteHabit={deleteHabit}
+            onLogHabit={logHabit}
+            habitDrag={{
+              onDragStart: handleHabitDragStart,
+              onDragOver: handleHabitDragOver,
+              onDrop: handleHabitDrop,
+              onDragEnd: handleHabitDragEnd,
+              draggedIndex: draggedHabitIdx,
+              dragOverIndex: dragOverHabitIdx
+            }}
             routines={routines}
             onSaveRoutine={saveRoutine}
             onToggleRoutineComplete={toggleRoutineComplete}
@@ -1913,21 +1575,9 @@ export default function App() {
             onSaveEntry={saveJournalEntry}
             onDeleteEntry={deleteJournalEntry}
           />
-        ) : activeTab === 'finance' ? (
-          <FinanceDashboard 
-            assets={financeAssets}
-            transactions={financeTransactions}
-            prices={financePrices}
-            loading={financeLoading}
-            error={financeError}
-            onSaveAsset={saveFinanceAsset}
-            onDeleteAsset={deleteFinanceAsset}
-            onSaveTransaction={saveFinanceTransaction}
-            onDeleteTransaction={deleteFinanceTransaction}
-            onRefreshPrices={fetchFinanceData}
-          />
-        ) : activeTab === 'yearly_payments' ? (
-          <YearlyPaymentsDashboard 
+        ) : activeTab === 'receivables' ? (
+          <ReceivablesDashboard
+            receivables={receivables}
             projects={projects}
             onOpenProject={handleOpenProjectById}
             displayCurrency={displayCurrency}
@@ -1935,141 +1585,23 @@ export default function App() {
             hideAmounts={hideAmounts}
             setHideAmounts={setHideAmounts}
             usdTryRate={usdTryRate}
+            onPaymentsLoaded={setYearlyPayments}
           />
         ) : (
-          /* Milestones View */
-          (() => {
-            const totalMilestones = milestones.length;
-            const unlockedMilestones = milestones.filter(m => m.is_unlocked).length;
-            const unlockRate = totalMilestones > 0 ? Math.round((unlockedMilestones / totalMilestones) * 100) : 0;
-            const lockedMilestones = totalMilestones - unlockedMilestones;
-
-            return (
-              <>
-                {/* Stats Section */}
-                <div className="stats-section" style={{ marginBottom: '24px' }}>
-                  <div className="stat-card glass-card">
-                    <div className="stat-header">
-                      <span className="stat-title">Toplam Başarım</span>
-                      <div className="stat-icon-wrapper blue">
-                        <Trophy />
-                      </div>
-                    </div>
-                    <div className="stat-value">{totalMilestones}</div>
-                    <div className="stat-desc">Tanımlanmış toplam başarım hedefi</div>
-                  </div>
-
-                  <div className="stat-card glass-card">
-                    <div className="stat-header">
-                      <span className="stat-title">Açılan Kilitler</span>
-                      <div className="stat-icon-wrapper emerald">
-                        <CheckCircle2 />
-                      </div>
-                    </div>
-                    <div className="stat-value">{unlockedMilestones}</div>
-                    <div className="stat-desc">Kazanılan toplam başarım sayısı</div>
-                  </div>
-
-                  <div className="stat-card glass-card">
-                    <div className="stat-header">
-                      <span className="stat-title">Kazanılma Oranı</span>
-                      <div className="stat-icon-wrapper orange">
-                        <Activity />
-                      </div>
-                    </div>
-                    <div className="stat-value">{unlockRate}%</div>
-                    <div className="stat-desc">Kazanılan başarımların yüzdesi</div>
-                  </div>
-
-                  <div className="stat-card glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <div className="stat-header">
-                        <span className="stat-title">Kilitliler</span>
-                        <div className="stat-icon-wrapper violet">
-                          <Lock />
-                        </div>
-                      </div>
-                      <div className="stat-value">{lockedMilestones}</div>
-                      <div className="stat-desc">Henüz açılmamış başarımlar</div>
-                    </div>
-                    <button 
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => setIsMilestoneAnalyticsOpen(true)}
-                      style={{ 
-                        marginTop: '12px', 
-                        width: '100%', 
-                        justifyContent: 'center', 
-                        fontSize: '12px', 
-                        padding: '8px',
-                        borderRadius: '8px' 
-                      }}
-                    >
-                      Detaylı İstatistikleri İncele
-                    </button>
-                  </div>
-                </div>
-
-                {/* Action Bar */}
-                <section className="action-bar-section">
-                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Kilometre Taşları & Başarımlar</h2>
-                  </div>
-                  <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
-                    <Plus /> Yeni Başarım Ekle
-                  </button>
-                </section>
-
-                {/* Milestones Display Grid */}
-                <section className="projects-grid-section">
-                  {milestonesLoading ? (
-                    <div className="loading-state">
-                      <div className="spinner"></div>
-                      <p>Başarımlar yükleniyor...</p>
-                    </div>
-                  ) : milestonesError ? (
-                    <div className="empty-state">
-                      <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--danger)' }} />
-                      <h3>Bağlantı Hatası</h3>
-                      <p>PostgreSQL sunucusuna veya backend API'sine bağlanılamıyor.</p>
-                      <button className="btn btn-secondary" onClick={() => fetchMilestones()}>
-                        <RefreshCw /> Tekrar Dene
-                      </button>
-                    </div>
-                  ) : milestones.length === 0 ? (
-                    <div className="empty-state">
-                      <Trophy style={{ width: '56px', height: '56px' }} />
-                      <h3>Başarım Bulunamadı</h3>
-                      <p>Henüz hiçbir başarım/kilometre taşı eklemediniz.</p>
-                      <button className="btn btn-primary" onClick={() => setIsMilestoneModalOpen(true)}>
-                        <Plus /> İlk Başarımı Ekle
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="milestone-grid">
-                      {milestones.map((milestone) => (
-                        <MilestoneCard
-                          key={milestone.id}
-                          milestone={milestone}
-                          stats={milestoneStats}
-                          onUnlock={setMilestoneToUnlock}
-                          onDelete={deleteMilestone}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {/* Milestone Analytics Modal */}
-                {isMilestoneAnalyticsOpen && (
-                  <MilestoneAnalyticsModal 
-                    milestones={milestones}
-                    onClose={() => setIsMilestoneAnalyticsOpen(false)}
-                  />
-                )}
-              </>
-            );
-          })()
+          <HomeDashboard
+            receivables={receivables}
+            habits={habits}
+            routines={routines}
+            goals={goals}
+            projects={projects}
+            displayCurrency={displayCurrency}
+            hideAmounts={hideAmounts}
+            usdTryRate={usdTryRate}
+            onNavigate={setActiveTab}
+            onOpenProject={handleOpenProjectById}
+            onLogHabit={logHabit}
+            onToggleRoutineComplete={toggleRoutineComplete}
+          />
         )}
       </main>
     </div>
@@ -2114,47 +1646,6 @@ export default function App() {
         }}
         onSaveHabit={saveHabit}
       />
-
-      {/* Milestone Management Modal */}
-      <MilestoneModal
-        isOpen={isMilestoneModalOpen}
-        onClose={() => setIsMilestoneModalOpen(false)}
-        onSaveMilestone={saveMilestone}
-      />
-
-      {/* Milestone Unlock Confirmation Modal */}
-      {milestoneToUnlock && (
-        <div className="modal-backdrop open" onClick={() => setMilestoneToUnlock(null)}>
-          <div className="modal glass-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px', color: 'var(--primary)' }}>
-              <Trophy size={48} className="pulse-priority" />
-            </div>
-            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>Başarım Kilidi Açılsın mı?</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: 1.5 }}>
-              <strong>"{milestoneToUnlock.title}"</strong> başarımının kilidini manuel olarak açmak istediğinize emin misiniz?
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => setMilestoneToUnlock(null)}
-                style={{ flex: 1 }}
-              >
-                Vazgeç
-              </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => {
-                  unlockMilestone(milestoneToUnlock.id);
-                  setMilestoneToUnlock(null);
-                }}
-                style={{ flex: 1 }}
-              >
-                Kilidi Aç
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast Notifications */}
       <div className="toast-container">
