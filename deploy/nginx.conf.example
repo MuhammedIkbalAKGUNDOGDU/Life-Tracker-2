@@ -1,0 +1,30 @@
+# /etc/nginx/sites-available/planner  (symlink to sites-enabled)
+# Replace planner.example.com with your (sub)domain.
+
+server {
+    listen 80;
+    server_name planner.example.com;
+
+    # HTTP -> HTTPS (certbot adds the 443 block below)
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name planner.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/planner.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/planner.example.com/privkey.pem;
+
+    client_max_body_size 5m;
+
+    location / {
+        proxy_pass http://127.0.0.1:34823;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Required: the app uses this to set Secure cookies and detect client IP
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -20,6 +20,7 @@ import UpcomingInstallments from './components/UpcomingInstallments';
 import { 
   Activity, 
   Home,
+  LogOut,
   Wallet,
   FolderKanban, 
   Target, 
@@ -60,7 +61,7 @@ const resolveTab = (hash) => {
   return VALID_TABS.includes(id) ? id : 'home';
 };
 
-export default function App() {
+export default function App({ onLogout }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -1217,6 +1218,13 @@ export default function App() {
               </>
             )}
           </button>
+
+          {onLogout && (
+            <button className="theme-toggle-btn" onClick={onLogout}>
+              <LogOut size={18} />
+              Çıkış Yap
+            </button>
+          )}
 
           <div className="user-profile">
             <div className="avatar">İ</div>

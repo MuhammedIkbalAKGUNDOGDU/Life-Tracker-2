@@ -1,16 +1,38 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const { createAuth } = require('./auth');
 const { Pool } = require('pg');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Behind nginx: trust X-Forwarded-* so req.ip / req.secure are correct
+app.set('trust proxy', 1);
+
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client', 'dist')));
+
+// Authentication (single password). Disabled only in local dev when APP_PASSWORD is unset.
+const APP_PASSWORD = process.env.APP_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!APP_PASSWORD || !SESSION_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ APP_PASSWORD and SESSION_SECRET must be set in production.');
+    process.exit(1);
+  }
+  console.warn('⚠️  APP_PASSWORD / SESSION_SECRET not set: authentication is DISABLED (dev mode).');
+} else {
+  const auth = createAuth({ password: APP_PASSWORD, secret: SESSION_SECRET });
+  app.post('/api/auth/login', auth.login);
+  app.post('/api/auth/logout', auth.logout);
+  app.get('/api/auth/status', auth.status);
+  app.use('/api', auth.requireAuth);
+}
+if (!APP_PASSWORD || !SESSION_SECRET) {
+  app.get('/api/auth/status', (req, res) => res.json({ authenticated: true, authDisabled: true }));
+}
 
 // PostgreSQL connection pool
 const pool = new Pool({

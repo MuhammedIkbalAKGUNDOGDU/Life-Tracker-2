@@ -3,3 +3,4 @@ node_modules
 client.log
 server.log
 .claude/
+backups/
