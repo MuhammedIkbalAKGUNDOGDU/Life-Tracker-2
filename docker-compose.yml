@@ -32,6 +32,10 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       APP_PASSWORD: ${APP_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      REMINDER_HOUR: ${REMINDER_HOUR:-9}
+      TZ: ${TZ:-Europe/Istanbul}
     ports:
       # Only reachable from the server itself; nginx proxies to this port
       - "127.0.0.1:${APP_PORT:-34823}:3000"

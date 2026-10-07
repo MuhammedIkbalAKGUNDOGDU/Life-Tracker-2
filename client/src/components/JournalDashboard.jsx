@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ModalShell from './ModalShell';
+import { notify } from '../ui';
 import { BookOpen, Trash2, Calendar, Smile, Heart, Check, X, Plus } from 'lucide-react';
 
 // === SUB-COMPONENT: SVG LINE CHART ===
@@ -335,13 +337,12 @@ function MoodAnalyticsModal({ entries = [], onClose, getMoodEmoji }) {
   });
 
   return (
-    <div className="modal-backdrop open" onClick={onClose}>
-      <div className="modal glass-card" style={{ maxWidth: '700px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+    <ModalShell onClose={onClose} style={{ maxWidth: '700px', width: '90%' }}>
         <div className="modal-header">
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Smile style={{ color: 'var(--primary)' }} /> Ruh Hali Grafik Analizi
           </h2>
-          <button className="btn-close" onClick={onClose}>
+          <button className="btn-close" data-modal-close type="button">
             <X />
           </button>
         </div>
@@ -396,10 +397,9 @@ function MoodAnalyticsModal({ entries = [], onClose, getMoodEmoji }) {
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Kapat</button>
+          <button type="button" className="btn btn-secondary" data-modal-close>Kapat</button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -475,7 +475,7 @@ export default function JournalDashboard({
   const handleSave = (e) => {
     e.preventDefault();
     if (!moodRating && !content.trim()) {
-      alert('Lütfen en azından bir ruh hali seçin veya günlük notu yazın!');
+      notify('Bir ruh hali seçin veya günlük notu yazın.', 'error');
       return;
     }
 

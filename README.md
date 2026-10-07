@@ -2,6 +2,8 @@
 
 Kişisel yaşam ve iş takip uygulaması: projeler, hedefler, günlük düzen (alışkanlık + rutin), günlük ve alacak takibi (proje ödemeleri + yıllık ödemeler). Tek şifreyle korunur.
 
+**Özellikler:** Ana sayfa (bugünün görevleri, alışkanlıklar, haftalık özet) · Projeler (görevler, alt adımlar, öncelik, sürükle-bırak sıralama, şablonlar, ödeme geçmişi, teklif PDF) · Hedefler · Günlük düzen · Alacaklar (müşteri bazlı, aylık takvim, ekstre PDF, CSV) · Takvim · Günlük · `Ctrl+K` ile genel arama · hızlı ekle (+) · telefona yüklenebilir (PWA) · silmede "Geri al".
+
 **Teknoloji:** React (Vite) · Node.js/Express · PostgreSQL · Docker
 
 ```
@@ -86,6 +88,15 @@ rm data.sql
 ### 4. Giriş
 `https://planner.alanadin.com` adresini aç, `APP_PASSWORD` ile giriş yap. 5 hatalı denemeden sonra o IP 15 dakika kilitlenir. Oturum 30 gün sürer. Sol menüde "Çıkış Yap" var.
 
+## Telegram ödeme hatırlatması (isteğe bağlı)
+Vadesi geçen ve 3 gün içinde gelen ödemeler her gün sabah Telegram'dan size mesaj olarak gelir.
+1. Telegram'da `@BotFather` ile bir bot oluşturup token'ı alın.
+2. Bota bir mesaj yazın, sonra `https://api.telegram.org/bot<TOKEN>/getUpdates` adresinden `chat.id` değerini bulun.
+3. `.env` içine `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` yazın, `docker compose up -d` çalıştırın.
+4. Test için (giriş yaptıktan sonra tarayıcı konsolundan): `fetch('/api/reminders/test', {method:'POST'})`
+
+Saat `REMINDER_HOUR` (varsayılan 9), saat dilimi `TZ` ile ayarlanır. Boş bırakırsanız özellik kapalıdır.
+
 ## Güncelleme
 ```bash
 cd ~/Life-Tracker-2
@@ -95,6 +106,9 @@ docker compose up -d --build
 Veritabanı `pgdata` volume'unda durur, güncellemede silinmez. **`docker compose down -v` komutunu kullanma**, `-v` veriyi siler.
 
 ## Yedekleme
+Uygulama içinden anlık yedek: sol menüde **Yedek indir** tüm verileri tek bir JSON dosyası olarak indirir.
+
+Sunucuda otomatik yedek:
 `deploy/backup.sh` her çalıştığında sıkıştırılmış bir dump alır ve son 14'ünü tutar:
 ```bash
 chmod +x deploy/backup.sh

@@ -1,4 +1,4 @@
-import { Plus, AlertTriangle, RefreshCw, Flame, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Plus, AlertTriangle, RefreshCw, Flame, Sparkles } from 'lucide-react';
 import HabitCard from './HabitCard';
 import HabitMatrix from './HabitMatrix';
 import HabitKPIs from './HabitKPIs';

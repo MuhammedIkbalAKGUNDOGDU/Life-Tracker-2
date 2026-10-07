@@ -36,6 +36,11 @@ export function buildReceivables(projects = [], yearlyPayments = [], usdTryRate 
       if (total <= 0) continue;
       const paid = Math.min(parseFloat(task.paid_price) || 0, total);
       const date = toLocalDay(task.due_date);
+      // Collections with their real dates; any older paid amount without history counts on the due date
+      const payments = (task.payments || []).map(p => ({ date: toLocalDay(p.paid_date), amount: parseFloat(p.amount) || 0, note: p.note || '' }));
+      const historyTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+      const legacy = paid - historyTotal;
+      const events = legacy > 0.005 ? [{ date, amount: legacy, note: '' }, ...payments] : payments;
       lines.push({
         id: `t-${task.id}`,
         source: 'project',
@@ -47,7 +52,9 @@ export function buildReceivables(projects = [], yearlyPayments = [], usdTryRate 
         paid,
         remaining: total - paid,
         date,
-        diffDays: diffFromToday(date)
+        diffDays: diffFromToday(date),
+        events,
+        taskId: task.id
       });
     }
   }
@@ -70,7 +77,8 @@ export function buildReceivables(projects = [], yearlyPayments = [], usdTryRate 
       paid,
       remaining: total - paid,
       date,
-      diffDays: diffFromToday(date)
+      diffDays: diffFromToday(date),
+      events: paid > 0 ? [{ date: toLocalDay(payment.payment_date) || date, amount: paid, note: '' }] : []
     });
   }
 
@@ -94,30 +102,38 @@ export function buildReceivables(projects = [], yearlyPayments = [], usdTryRate 
     }))
     .sort((a, b) => b.remaining - a.remaining || b.total - a.total);
 
-  // Per year / month (by due date)
-  const dated = lines.filter(l => l.date);
-  const years = [...new Set(dated.map(l => l.date.getFullYear()))].sort((a, b) => a - b);
+  // Per year / month: money received counts in the month it was collected,
+  // money still expected counts in the month it is due.
+  const entries = []; // { line, kind: 'paid' | 'pending', amount, date }
+  for (const line of lines) {
+    for (const ev of line.events) {
+      if (ev.date) entries.push({ line, kind: 'paid', amount: ev.amount, date: ev.date });
+    }
+    if (line.remaining > 0 && line.date) entries.push({ line, kind: 'pending', amount: line.remaining, date: line.date });
+  }
+  const years = [...new Set(entries.map(e => e.date.getFullYear()))].sort((a, b) => a - b);
   const byYear = {};
   for (const year of years) {
-    const months = Array.from({ length: 12 }, (_, m) => ({ month: m, paid: 0, pending: 0, oneTime: 0, yearly: 0, lines: [] }));
-    for (const line of dated.filter(l => l.date.getFullYear() === year)) {
-      const slot = months[line.date.getMonth()];
-      slot.paid += line.paid;
-      slot.pending += line.remaining;
-      slot[line.source === 'project' ? 'oneTime' : 'yearly'] += line.total;
-      slot.lines.push(line);
+    const months = Array.from({ length: 12 }, (_, m) => ({ month: m, paid: 0, pending: 0, oneTime: 0, yearly: 0, entries: [] }));
+    const yearEntries = entries.filter(e => e.date.getFullYear() === year);
+    for (const e of yearEntries) {
+      const slot = months[e.date.getMonth()];
+      slot[e.kind === 'paid' ? 'paid' : 'pending'] += e.amount;
+      slot[e.line.source === 'project' ? 'oneTime' : 'yearly'] += e.amount;
+      slot.entries.push(e);
     }
-    const yearLines = dated.filter(l => l.date.getFullYear() === year);
+    const sumE = (arr) => arr.reduce((acc, e) => acc + e.amount, 0);
     byYear[year] = {
       year,
       months,
-      total: sum(yearLines, 'total'),
-      paid: sum(yearLines, 'paid'),
-      remaining: sum(yearLines, 'remaining'),
-      oneTime: sum(yearLines.filter(l => l.source === 'project'), 'total'),
-      yearly: sum(yearLines.filter(l => l.source === 'yearly'), 'total')
+      total: sumE(yearEntries),
+      paid: sumE(yearEntries.filter(e => e.kind === 'paid')),
+      remaining: sumE(yearEntries.filter(e => e.kind === 'pending')),
+      oneTime: sumE(yearEntries.filter(e => e.line.source === 'project')),
+      yearly: sumE(yearEntries.filter(e => e.line.source === 'yearly'))
     };
   }
+  const dated = lines.filter(l => l.date);
 
   // Reminders: everything still unpaid with a date, soonest first (overdue on top)
   const reminders = dated
@@ -128,6 +144,7 @@ export function buildReceivables(projects = [], yearlyPayments = [], usdTryRate 
 
   return {
     lines,
+    entries,
     byClient,
     byYear,
     years,

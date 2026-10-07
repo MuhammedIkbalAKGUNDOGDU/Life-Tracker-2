@@ -12,10 +12,14 @@ import {
   Eye,
   EyeOff,
   FolderKanban,
-  Repeat
+  Repeat,
+  Printer,
+  Download
 } from 'lucide-react';
 import YearlyPaymentsDashboard from './YearlyPaymentsDashboard';
+import { notify } from '../ui';
 import { MONTH_NAMES, dueLabel, dueColor } from '../receivables';
+import { printClientStatement, downloadCsv } from '../print';
 
 const SOURCE_META = {
   project: { label: 'Proje', icon: <FolderKanban size={12} />, cls: 'project' },
@@ -45,7 +49,7 @@ export default function ReceivablesDashboard({
 
   const yearOptions = [...new Set([...receivables.years, currentYear, currentYear + 1])].sort((a, b) => a - b);
   const yearData = byYear[year] || {
-    months: Array.from({ length: 12 }, (_, m) => ({ month: m, paid: 0, pending: 0, oneTime: 0, yearly: 0, lines: [] })),
+    months: Array.from({ length: 12 }, (_, m) => ({ month: m, paid: 0, pending: 0, oneTime: 0, yearly: 0, entries: [] })),
     total: 0, paid: 0, remaining: 0, oneTime: 0, yearly: 0
   };
   const maxMonth = Math.max(1, ...yearData.months.map(m => m.paid + m.pending));
@@ -62,6 +66,21 @@ export default function ReceivablesDashboard({
 
   const fmtDate = (d) => d ? d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Vadesiz';
 
+  const exportCsv = () => {
+    const rows = [['Müşteri', 'Kaynak', 'Kalem', 'Proje', 'Vade', 'Toplam (TL)', 'Alınan (TL)', 'Kalan (TL)']];
+    receivables.lines.forEach(l => rows.push([
+      l.client, l.source === 'yearly' ? 'Yıllık' : 'Proje', l.title, l.projectTitle || '',
+      l.date ? l.date.toLocaleDateString('tr-TR') : '',
+      l.total.toFixed(2), l.paid.toFixed(2), l.remaining.toFixed(2)
+    ]));
+    downloadCsv(`alacaklar-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
+  const printStatement = (e, client) => {
+    e.stopPropagation();
+    if (!printClientStatement(client, fmt)) notify('Yazdırma penceresi engellendi. Tarayıcıda açılır pencerelere izin verin.', 'error');
+  };
+
   const visibleReminders = reminders.filter(r => r.diffDays <= reminderRange);
   const overdueCount = reminders.filter(r => r.diffDays < 0).length;
 
@@ -75,7 +94,7 @@ export default function ReceivablesDashboard({
     </span>
   );
 
-  const LineRow = ({ line, showClient = false }) => (
+  const LineRow = ({ line, showClient = false, entry }) => (
     <div
       className={`rc-line ${line.projectId ? 'clickable' : ''}`}
       onClick={() => openLine(line)}
@@ -87,13 +106,17 @@ export default function ReceivablesDashboard({
           <span>
             {showClient ? `${line.client} · ` : ''}
             {line.projectTitle && line.projectTitle !== line.title ? `${line.projectTitle} · ` : ''}
-            {fmtDate(line.date)}
+            {entry && entry.kind === 'paid' ? '' : fmtDate(line.date)}
           </span>
         </div>
       </div>
       <div className="rc-line-amount">
-        <strong>{fmt(line.remaining > 0 ? line.remaining : line.total)}</strong>
-        {line.remaining <= 0 ? (
+        <strong>{fmt(entry ? entry.amount : (line.remaining > 0 ? line.remaining : line.total))}</strong>
+        {entry ? (
+          <span style={{ color: entry.kind === 'paid' ? 'var(--success)' : dueColor(line.diffDays) }}>
+            {entry.kind === 'paid' ? `Tahsil edildi · ${fmtDate(entry.date)}` : dueLabel(line.diffDays)}
+          </span>
+        ) : line.remaining <= 0 ? (
           <span style={{ color: 'var(--success)' }}>Tahsil edildi</span>
         ) : line.paid > 0 ? (
           <span>{fmt(line.paid)} alındı</span>
@@ -125,6 +148,9 @@ export default function ReceivablesDashboard({
               </button>
             ))}
           </div>
+          <button className="btn btn-secondary" onClick={exportCsv} title="Tüm kalemleri CSV olarak indir">
+            <Download size={16} /> CSV
+          </button>
           <button
             className="btn btn-secondary"
             onClick={() => setHideAmounts(!hideAmounts)}
@@ -253,7 +279,7 @@ export default function ReceivablesDashboard({
                       </button>
                       {isOpen && total > 0 && (
                         <div className="rc-list rc-month-lines">
-                          {m.lines.map(line => <LineRow key={line.id} line={line} showClient />)}
+                          {m.entries.map((e, idx) => <LineRow key={`${e.line.id}-${e.kind}-${idx}`} line={e.line} entry={e} showClient />)}
                         </div>
                       )}
                     </div>
@@ -318,7 +344,16 @@ export default function ReceivablesDashboard({
                         </span>
                         <span>{fmt(c.total)}</span>
                         <span style={{ color: 'var(--success)' }}>{fmt(c.paid)}</span>
-                        <span style={{ color: c.remaining > 0 ? '#f59e0b' : 'var(--text-muted)' }}>{fmt(c.remaining)}</span>
+                        <span style={{ color: c.remaining > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
+                          {fmt(c.remaining)}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="rc-print"
+                            title="Hesap ekstresi yazdır / PDF"
+                            onClick={(e) => printStatement(e, c)}
+                          ><Printer size={14} /></span>
+                        </span>
                         <div className="rc-client-progress"><div style={{ width: `${pct}%` }} /></div>
                       </button>
                       {isOpen && (

@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import ModalShell from './ModalShell';
+import NumInput from './NumInput';
+import { confirmDialog, notify } from '../ui';
 import { Plus, Edit3, Trash2, Calendar, User, FileText, X, ExternalLink, Settings, BarChart2 } from 'lucide-react';
 
 export default function YearlyPaymentsDashboard({ 
@@ -128,18 +131,18 @@ export default function YearlyPaymentsDashboard({
       setNewOptionName('');
       fetchOptions();
     } catch (err) {
-      alert(err.message);
+      notify(err.message, 'error');
     }
   };
 
   const handleDeleteOption = async (id) => {
-    if (!window.confirm('Bu ödeme kategorisini silmek istediğinize emin misiniz?')) return;
+    if (!(await confirmDialog({ title: 'Kategori silinsin mi?', message: 'Bu ödeme kategorisi listeden kaldırılacak.', confirmText: 'Sil', danger: true }))) return;
     try {
       const res = await fetch(`/api/yearly-payment-options/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Seçenek silinemedi.');
       fetchOptions();
     } catch (err) {
-      alert(err.message);
+      notify(err.message, 'error');
     }
   };
 
@@ -217,18 +220,18 @@ export default function YearlyPaymentsDashboard({
       setIsModalOpen(false);
       fetchPayments();
     } catch (err) {
-      alert(err.message);
+      notify(err.message, 'error');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Bu yıllık ödeme kaydını silmek istediğinize emin misiniz?')) return;
+    if (!(await confirmDialog({ title: 'Yıllık ödeme silinsin mi?', message: 'Bu kayıt ve kalemleri kalıcı olarak silinir.', confirmText: 'Sil', danger: true }))) return;
     try {
       const res = await fetch(`/api/yearly-payments/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Ödeme silinemedi.');
       fetchPayments();
     } catch (err) {
-      alert(err.message);
+      notify(err.message, 'error');
     }
   };
 
@@ -842,11 +845,10 @@ export default function YearlyPaymentsDashboard({
 
       {/* Form Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop open" onClick={() => setIsModalOpen(false)}>
-          <div className="modal glass-card" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+        <ModalShell onClose={() => setIsModalOpen(false)} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
               <h2>{selectedPayment ? 'Yıllık Ödemeyi Düzenle' : 'Yıllık Ödeme Ekle'}</h2>
-              <button className="btn-close" onClick={() => setIsModalOpen(false)} type="button">
+              <button className="btn-close" data-modal-close type="button">
                 <X />
               </button>
             </div>
@@ -1006,13 +1008,10 @@ export default function YearlyPaymentsDashboard({
                           </select>
 
                           {/* Amount input */}
-                          <input
-                            type="number"
-                            value={item.amount || ''}
-                            onChange={(e) => handleItemChange(idx, 'amount', Math.max(0, parseFloat(e.target.value) || 0))}
+                          <NumInput
+                            value={item.amount}
+                            onChange={(val) => handleItemChange(idx, 'amount', val)}
                             placeholder="Tutar"
-                            required
-                            min="0"
                             style={{ padding: '6px 10px', fontSize: '12px' }}
                           />
 
@@ -1052,21 +1051,19 @@ export default function YearlyPaymentsDashboard({
               </div>
 
               <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Vazgeç</button>
+                <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
                 <button type="submit" className="btn btn-primary">Kaydet</button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Options Management Modal */}
       {isOptionsModalOpen && (
-        <div className="modal-backdrop open" onClick={() => setIsOptionsModalOpen(false)}>
-          <div className="modal glass-card" style={{ maxWidth: '450px' }} onClick={(e) => e.stopPropagation()}>
+        <ModalShell onClose={() => setIsOptionsModalOpen(false)} style={{ maxWidth: '450px' }}>
             <div className="modal-header">
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={18} /> Ödeme Kategorilerini Yönet</h2>
-              <button className="btn-close" onClick={() => setIsOptionsModalOpen(false)} type="button">
+              <button className="btn-close" data-modal-close type="button">
                 <X />
               </button>
             </div>
@@ -1125,19 +1122,17 @@ export default function YearlyPaymentsDashboard({
             </div>
             
             <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsOptionsModalOpen(false)}>Kapat</button>
+              <button type="button" className="btn btn-secondary" data-modal-close>Kapat</button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Breakdown Modal */}
       {isBreakdownModalOpen && (
-        <div className="modal-backdrop open" onClick={() => setIsBreakdownModalOpen(false)}>
-          <div className="modal glass-card" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+        <ModalShell onClose={() => setIsBreakdownModalOpen(false)} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 style={{ color: 'var(--success)' }} /> Kırılım Analizi (Yıllık)</h2>
-              <button className="btn-close" onClick={() => setIsBreakdownModalOpen(false)} type="button">
+              <button className="btn-close" data-modal-close type="button">
                 <X />
               </button>
             </div>
@@ -1227,10 +1222,9 @@ export default function YearlyPaymentsDashboard({
             </div>
             
             <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsBreakdownModalOpen(false)}>Kapat</button>
+              <button type="button" className="btn btn-secondary" data-modal-close>Kapat</button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

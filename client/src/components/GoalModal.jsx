@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import ModalShell from './ModalShell';
+import NumInput from './NumInput';
 import { X, Flame, Target } from 'lucide-react';
 
 export default function GoalModal({
@@ -84,11 +86,10 @@ export default function GoalModal({
   };
 
   return (
-    <div className="modal-backdrop open" onClick={onClose}>
-      <div className="modal glass-card" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
+    <ModalShell onClose={onClose} style={{ maxWidth: '650px' }}>
         <div className="modal-header">
           <h2>{goal ? 'Hedefi Düzenle' : 'Yeni Hedef Ekle'}</h2>
-          <button className="btn-close" onClick={onClose} type="button">
+          <button className="btn-close" data-modal-close type="button">
             <X />
           </button>
         </div>
@@ -205,22 +206,12 @@ export default function GoalModal({
                 <div className="form-row-2" style={{ width: '100%', gap: '12px' }}>
                   <div className="form-group" style={{ flex: 1 }}>
                     <label style={{ fontSize: '10px' }}>Mevcut Miktar</label>
-                    <input
-                      type="number"
-                      value={currentValue}
-                      onChange={(e) => setCurrentValue(parseFloat(e.target.value) || 0)}
-                      min="0"
-                    />
+                    <NumInput value={currentValue} onChange={setCurrentValue} />
                   </div>
                   
                   <div className="form-group" style={{ flex: 1 }}>
                     <label style={{ fontSize: '10px' }}>Hedeflenen Miktar</label>
-                    <input
-                      type="number"
-                      value={targetValue}
-                      onChange={(e) => setTargetValue(Math.max(1, parseFloat(e.target.value) || 1))}
-                      min="1"
-                    />
+                    <NumInput value={targetValue} onChange={setTargetValue} min={1} emptyValue={1} />
                   </div>
 
                   <div className="form-group" style={{ flex: 1.2 }}>
@@ -239,11 +230,10 @@ export default function GoalModal({
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Vazgeç</button>
+            <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
             <button type="submit" className="btn btn-primary">Kaydet</button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

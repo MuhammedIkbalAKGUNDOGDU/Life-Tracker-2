@@ -12,7 +12,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
-COPY server.js auth.js ./
+COPY server.js auth.js extras.js reminders.js ./
 COPY --from=client-build /client/dist ./client/dist
 USER node
 EXPOSE 3000

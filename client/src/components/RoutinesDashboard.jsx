@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ModalShell from './ModalShell';
 import { 
   Plus, 
   Trash2, 
@@ -296,11 +297,10 @@ export default function RoutinesDashboard({
 
       {/* Routine Creation Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop open" onClick={() => setIsModalOpen(false)}>
-          <div className="modal glass-card" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+        <ModalShell onClose={() => setIsModalOpen(false)} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h2>Yeni Rutin Oluştur</h2>
-              <button className="btn-close" onClick={() => setIsModalOpen(false)} type="button">
+              <button className="btn-close" data-modal-close type="button">
                 <X />
               </button>
             </div>
@@ -391,12 +391,11 @@ export default function RoutinesDashboard({
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Vazgeç</button>
+                <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
                 <button type="submit" className="btn btn-primary">Oluştur</button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </>
   );

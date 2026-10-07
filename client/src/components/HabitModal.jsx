@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import ModalShell from './ModalShell';
+import NumInput from './NumInput';
+import { notify } from '../ui';
 import { X, Flame } from 'lucide-react';
 
 export default function HabitModal({
@@ -61,7 +64,7 @@ export default function HabitModal({
     e.preventDefault();
     if (!title.trim()) return;
     if (frequency === 'custom' && customDays.length === 0) {
-      alert('Lütfen haftanın en az bir gününü seçin!');
+      notify('Lütfen haftanın en az bir gününü seçin.', 'error');
       return;
     }
 
@@ -88,11 +91,10 @@ export default function HabitModal({
   ];
 
   return (
-    <div className="modal-backdrop open" onClick={onClose}>
-      <div className="modal glass-card" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+    <ModalShell onClose={onClose} style={{ maxWidth: '600px' }}>
         <div className="modal-header">
           <h2>{habit ? 'Alışkanlığı Düzenle' : 'Yeni Alışkanlık Ekle'}</h2>
-          <button className="btn-close" onClick={onClose} type="button">
+          <button className="btn-close" data-modal-close type="button">
             <X />
           </button>
         </div>
@@ -137,11 +139,12 @@ export default function HabitModal({
 
               <div className="form-group">
                 <label>Günlük Hedef Miktar</label>
-                <input
-                  type="number"
+                <NumInput
                   value={targetCount}
-                  onChange={(e) => setTargetCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  min="1"
+                  onChange={setTargetCount}
+                  min={1}
+                  integer
+                  emptyValue={1}
                   placeholder="örn: 1 (günde 1 kez)"
                 />
               </div>
@@ -213,18 +216,17 @@ export default function HabitModal({
                   {dayNames.map((day, idx) => (
                     <div key={day.value} className="form-group" style={{ margin: 0 }}>
                       <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{day.label}</label>
-                      <input
-                        type="number"
+                      <NumInput
                         value={weeklyTargets[idx] ?? 1}
-                        onChange={(e) => {
-                          const val = Math.max(0, parseInt(e.target.value) || 0);
+                        onChange={(val) => {
                           setWeeklyTargets(prev => {
                             const next = [...prev];
                             next[idx] = val;
                             return next;
                           });
                         }}
-                        min="0"
+                        min={0}
+                        integer
                         style={{ padding: '6px 10px', fontSize: '13px' }}
                       />
                     </div>
@@ -236,11 +238,10 @@ export default function HabitModal({
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Vazgeç</button>
+            <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
             <button type="submit" className="btn btn-primary">Kaydet</button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

@@ -54,6 +54,35 @@ pool.query('SELECT NOW()', (err, res) => {
       ALTER TABLE project_tasks 
       ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL;
 
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS is_today BOOLEAN DEFAULT FALSE;
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 2;
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS repeat VARCHAR(20) DEFAULT '';
+      ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
+
+      CREATE TABLE IF NOT EXISTS task_payments (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES project_tasks(id) ON DELETE CASCADE,
+        amount NUMERIC(12, 2) NOT NULL,
+        paid_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        note VARCHAR(255) DEFAULT '',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS project_templates (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        type VARCHAR(50) DEFAULT 'personal',
+        tasks JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS app_state (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS yearly_payments (
         id SERIAL PRIMARY KEY,
         project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
@@ -132,8 +161,15 @@ app.get('/api/projects', async (req, res) => {
               'paid_price', t.paid_price,
               'description', t.description,
               'is_completed', t.is_completed,
-              'due_date', t.due_date
-            ) ORDER BY t.created_at
+              'due_date', t.due_date,
+              'sort_order', t.sort_order,
+              'is_today', t.is_today,
+              'priority', t.priority,
+              'checklist', t.checklist,
+              'repeat', t.repeat,
+              'completed_at', t.completed_at,
+              'payments', COALESCE((SELECT json_agg(json_build_object('id', tp.id, 'amount', tp.amount, 'paid_date', tp.paid_date, 'note', tp.note) ORDER BY tp.paid_date, tp.id) FROM task_payments tp WHERE tp.task_id = t.id), '[]'::json)
+            ) ORDER BY t.sort_order, t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
           '[]'
         ) AS tasks
@@ -243,8 +279,15 @@ app.put('/api/projects/:id', async (req, res) => {
               'paid_price', t.paid_price,
               'description', t.description,
               'is_completed', t.is_completed,
-              'due_date', t.due_date
-            ) ORDER BY t.created_at
+              'due_date', t.due_date,
+              'sort_order', t.sort_order,
+              'is_today', t.is_today,
+              'priority', t.priority,
+              'checklist', t.checklist,
+              'repeat', t.repeat,
+              'completed_at', t.completed_at,
+              'payments', COALESCE((SELECT json_agg(json_build_object('id', tp.id, 'amount', tp.amount, 'paid_date', tp.paid_date, 'note', tp.note) ORDER BY tp.paid_date, tp.id) FROM task_payments tp WHERE tp.task_id = t.id), '[]'::json)
+            ) ORDER BY t.sort_order, t.created_at
           ) FILTER (WHERE t.id IS NOT NULL), 
           '[]'
         ) AS tasks
@@ -277,73 +320,141 @@ app.delete('/api/projects/:id', async (req, res) => {
 });
 
 
+// Full task row incl. payment history (same shape as inside GET /api/projects)
+const TASK_SELECT = `
+  SELECT t.*,
+    COALESCE((SELECT json_agg(json_build_object('id', tp.id, 'amount', tp.amount, 'paid_date', tp.paid_date, 'note', tp.note) ORDER BY tp.paid_date, tp.id)
+              FROM task_payments tp WHERE tp.task_id = t.id), '[]'::json) AS payments
+  FROM project_tasks t`;
+const getTask = async (db, id) => (await db.query(`${TASK_SELECT} WHERE t.id = $1`, [id])).rows[0];
+
+const clampPriority = (v) => Math.min(3, Math.max(1, parseInt(v) || 2));
+const cleanChecklist = (list) =>
+  Array.isArray(list)
+    ? list.filter(i => i && String(i.text || '').trim()).map(i => ({ text: String(i.text).trim(), done: !!i.done }))
+    : [];
+const REPEATS = ['', 'daily', 'weekly', 'monthly'];
+
+// Next due date for a recurring task (from its due date, or today when it has none)
+const nextRepeatDate = (due, repeat) => {
+  const d = due ? new Date(due) : new Date();
+  if (repeat === 'daily') d.setDate(d.getDate() + 1);
+  else if (repeat === 'weekly') d.setDate(d.getDate() + 7);
+  else if (repeat === 'monthly') d.setMonth(d.getMonth() + 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 // 5. ADD TASK TO A PROJECT
 app.post('/api/projects/:id/tasks', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price, paid_price, description, due_date } = req.body;
+  const { title, weight, price, paid_price, description, due_date, priority, is_today, checklist, repeat } = req.body;
   try {
     const checkProject = await pool.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (checkProject.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const query = `
-      INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description, due_date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *;
-    `;
-    const { rows } = await pool.query(query, [
-      id, 
-      title, 
-      weight || 1, 
-      price || 0.00, 
-      paid_price || 0.00, 
+    const { rows } = await pool.query(`
+      INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description, due_date, priority, is_today, checklist, repeat, sort_order)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        COALESCE((SELECT MAX(sort_order) + 1 FROM project_tasks WHERE project_id = $1), 0))
+      RETURNING id;
+    `, [
+      id,
+      title,
+      weight || 1,
+      price || 0.00,
+      paid_price || 0.00,
       description || '',
-      due_date || null
+      due_date || null,
+      clampPriority(priority),
+      !!is_today,
+      JSON.stringify(cleanChecklist(checklist)),
+      REPEATS.includes(repeat) ? repeat : ''
     ]);
-    res.status(201).json(rows[0]);
+    res.status(201).json(await getTask(pool, rows[0].id));
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server error adding task' });
   }
 });
 
-// 6. UPDATE TASK STATUS (Toggle complete, change title/weight)
+// 5.5 REORDER TASKS OF A PROJECT
+app.put('/api/projects/:id/tasks/reorder', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'Invalid data format' });
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    for (let i = 0; i < ids.length; i++) {
+      await db.query('UPDATE project_tasks SET sort_order = $1 WHERE id = $2 AND project_id = $3', [i, ids[i], req.params.id]);
+    }
+    await db.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error reordering tasks' });
+  } finally {
+    db.release();
+  }
+});
+
+// 6. UPDATE A TASK (any subset of fields). Completing a recurring task spawns the next one.
 app.put('/api/tasks/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, weight, price, paid_price, description, is_completed, due_date } = req.body;
   try {
-    const getTask = await pool.query('SELECT * FROM project_tasks WHERE id = $1', [id]);
-    if (getTask.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    
-    const currentTask = getTask.rows[0];
-    const newTitle = title !== undefined ? title : currentTask.title;
-    const newWeight = weight !== undefined ? weight : currentTask.weight;
-    const newPrice = price !== undefined ? price : currentTask.price;
-    const newPaidPrice = paid_price !== undefined ? paid_price : currentTask.paid_price;
-    const newDescription = description !== undefined ? description : currentTask.description;
-    const newIsCompleted = is_completed !== undefined ? is_completed : currentTask.is_completed;
-    const newDueDate = due_date !== undefined ? due_date : currentTask.due_date;
+    const current = (await pool.query('SELECT * FROM project_tasks WHERE id = $1', [id])).rows[0];
+    if (!current) return res.status(404).json({ error: 'Task not found' });
 
-    const query = `
+    const b = req.body;
+    const pick = (key, fallback) => (b[key] !== undefined ? b[key] : fallback);
+    const isCompleted = pick('is_completed', current.is_completed);
+    const completedAt = isCompleted
+      ? (current.is_completed ? current.completed_at : new Date())
+      : null;
+
+    await pool.query(`
       UPDATE project_tasks
-      SET title = $1, weight = $2, price = $3, paid_price = $4, description = $5, is_completed = $6, due_date = $7
-      WHERE id = $8
-      RETURNING *;
-    `;
-    const { rows } = await pool.query(query, [
-      newTitle, 
-      newWeight, 
-      newPrice, 
-      newPaidPrice, 
-      newDescription, 
-      newIsCompleted, 
-      newDueDate,
+      SET title = $1, weight = $2, price = $3, paid_price = $4, description = $5, is_completed = $6,
+          due_date = $7, is_today = $8, priority = $9, checklist = $10, repeat = $11, completed_at = $12
+      WHERE id = $13
+    `, [
+      pick('title', current.title),
+      pick('weight', current.weight),
+      pick('price', current.price),
+      pick('paid_price', current.paid_price),
+      pick('description', current.description),
+      isCompleted,
+      pick('due_date', current.due_date),
+      b.is_today !== undefined ? !!b.is_today : current.is_today,
+      b.priority !== undefined ? clampPriority(b.priority) : current.priority,
+      JSON.stringify(b.checklist !== undefined ? cleanChecklist(b.checklist) : current.checklist),
+      b.repeat !== undefined ? (REPEATS.includes(b.repeat) ? b.repeat : '') : current.repeat,
+      completedAt,
       id
     ]);
-    res.json(rows[0]);
+
+    const task = await getTask(pool, id);
+
+    // Recurring: when it flips to completed, create the next occurrence
+    let spawned = null;
+    if (isCompleted && !current.is_completed && task.repeat) {
+      const ins = await pool.query(`
+        INSERT INTO project_tasks (project_id, title, weight, price, paid_price, description, due_date, priority, is_today, checklist, repeat, sort_order)
+        VALUES ($1, $2, $3, $4, 0, $5, $6, $7, FALSE, $8, $9,
+          COALESCE((SELECT MAX(sort_order) + 1 FROM project_tasks WHERE project_id = $1), 0))
+        RETURNING id;
+      `, [
+        task.project_id, task.title, task.weight, task.price, task.description,
+        nextRepeatDate(task.due_date, task.repeat), task.priority,
+        JSON.stringify((task.checklist || []).map(i => ({ ...i, done: false }))), task.repeat
+      ]);
+      spawned = await getTask(pool, ins.rows[0].id);
+    }
+
+    res.json({ ...task, spawned });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server error updating task' });
@@ -362,6 +473,36 @@ app.delete('/api/tasks/:id', async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server error deleting task' });
+  }
+});
+
+// 7.5 PAYMENT HISTORY: every collection is recorded with its date and adds to paid_price
+app.post('/api/tasks/:id/payments', async (req, res) => {
+  const { id } = req.params;
+  const amount = parseFloat(req.body.amount);
+  if (!amount) return res.status(400).json({ error: 'Tutar gerekli.' });
+  try {
+    const exists = await pool.query('SELECT id FROM project_tasks WHERE id = $1', [id]);
+    if (exists.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
+    await pool.query('INSERT INTO task_payments (task_id, amount, paid_date, note) VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4)',
+      [id, amount, req.body.paid_date || null, req.body.note || '']);
+    await pool.query('UPDATE project_tasks SET paid_price = paid_price + $1 WHERE id = $2', [amount, id]);
+    res.status(201).json(await getTask(pool, id));
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error adding payment' });
+  }
+});
+
+app.delete('/api/task-payments/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('DELETE FROM task_payments WHERE id = $1 RETURNING task_id, amount', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
+    await pool.query('UPDATE project_tasks SET paid_price = GREATEST(paid_price - $1, 0) WHERE id = $2', [rows[0].amount, rows[0].task_id]);
+    res.json(await getTask(pool, rows[0].task_id));
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error deleting payment' });
   }
 });
 
@@ -1514,6 +1655,27 @@ app.delete('/api/yearly-payment-options/:id', async (req, res) => {
 });
 
 
+require('./extras')(app, pool);
+
+// Send a test reminder right now (needs TELEGRAM_* env vars)
+app.post('/api/reminders/test', async (req, res) => {
+  const reminders = require('./reminders');
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    return res.status(400).json({ error: 'TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID tanımlı değil.' });
+  }
+  try {
+    const text = (await reminders.buildMessage(pool)) || 'Bugün için bekleyen ödeme yok. ✅';
+    await reminders.send(text);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unknown API routes answer with JSON (never the HTML page)
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+
 // Serve the frontend app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
@@ -1521,6 +1683,8 @@ app.get('*', (req, res) => {
 
 
 // Start Server
+require('./reminders').start(pool);
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

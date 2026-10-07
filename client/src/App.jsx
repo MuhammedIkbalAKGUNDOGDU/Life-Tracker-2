@@ -5,15 +5,15 @@ import ProjectModal from './components/ProjectModal';
 import GoalCard from './components/GoalCard';
 import GoalModal from './components/GoalModal';
 import GoalKPIs from './components/GoalKPIs';
-import HabitCard from './components/HabitCard';
-import HabitMatrix from './components/HabitMatrix';
 import HabitModal from './components/HabitModal';
-import HabitKPIs from './components/HabitKPIs';
-import RoutinesDashboard from './components/RoutinesDashboard';
 import HomeDashboard from './components/HomeDashboard';
 import ReceivablesDashboard from './components/ReceivablesDashboard';
 import DailyDashboard from './components/DailyDashboard';
+import CalendarDashboard from './components/CalendarDashboard';
+import CommandPalette from './components/CommandPalette';
+import QuickAdd from './components/QuickAdd';
 import { buildReceivables } from './receivables';
+import { confirmDialog } from './ui';
 import JournalDashboard from './components/JournalDashboard';
 import PendingPayments from './components/PendingPayments';
 import UpcomingInstallments from './components/UpcomingInstallments';
@@ -42,12 +42,14 @@ import {
   List,
   Flame,
   BookOpen,
-  Sparkles,
   Eye,
-  EyeOff
+  EyeOff,
+  CalendarDays,
+  Search,
+  Download
 } from 'lucide-react';
 
-const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables'];
+const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar'];
 const LEGACY_TABS = { habits: 'daily', routines: 'daily', yearly_payments: 'receivables' };
 const NAV_TABS = [
   { id: 'home', label: 'Ana Sayfa', icon: <Home /> },
@@ -55,6 +57,7 @@ const NAV_TABS = [
   { id: 'goals', label: 'Hedefler', icon: <Target /> },
   { id: 'daily', label: 'Günlük Düzen', icon: <Flame /> },
   { id: 'receivables', label: 'Alacaklar', icon: <Wallet /> },
+  { id: 'calendar', label: 'Takvim', icon: <CalendarDays /> },
   { id: 'journal', label: 'Günlük', icon: <BookOpen /> }
 ];
 const resolveTab = (hash) => {
@@ -68,6 +71,7 @@ export default function App({ onLogout }) {
   const [error, setError] = useState(false);
   const [currentFilter, setCurrentFilter] = useState('all');
   const [selectedClient, setSelectedClient] = useState('all');
+  const [projectSearch, setProjectSearch] = useState('');
   
   // Theme & Navigation Sidebar State
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -128,6 +132,11 @@ export default function App({ onLogout }) {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalError, setJournalError] = useState(false);
 
+  // Project templates, command palette, quick add
+  const [templates, setTemplates] = useState([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+
   // Yearly payments (shared by Home & Alacaklar)
   const [yearlyPayments, setYearlyPayments] = useState([]);
   const [usdTryRate, setUsdTryRate] = useState(34.0);
@@ -139,17 +148,12 @@ export default function App({ onLogout }) {
   const [displayCurrency, setDisplayCurrency] = useState(() => {
     return localStorage.getItem('display_currency') || 'TRY';
   });
-  const [hideAmounts, setHideAmounts] = useState(() => {
-    return localStorage.getItem('hide_amounts') === 'true';
-  });
+  // Amounts are always hidden on page load (not remembered); the eye button reveals them
+  const [hideAmounts, setHideAmounts] = useState(true);
 
   useEffect(() => {
     localStorage.setItem('display_currency', displayCurrency);
   }, [displayCurrency]);
-
-  useEffect(() => {
-    localStorage.setItem('hide_amounts', String(hideAmounts));
-  }, [hideAmounts]);
 
   useEffect(() => {
     localStorage.setItem('goals_view_mode', goalsViewMode);
@@ -167,6 +171,7 @@ export default function App({ onLogout }) {
     fetchJournal();
     fetchYearlyPayments();
     fetchRate();
+    fetchTemplates();
   }, []);
 
   useEffect(() => {
@@ -179,14 +184,36 @@ export default function App({ onLogout }) {
   }, [theme]);
 
   // Show customized toast notification
-  const showToast = (message, type = 'info') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    
+  const showToast = (message, type = 'info', action = null) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type, action }]);
+
+    // Toasts with an action (e.g. "Geri al") stay longer
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3500);
+    }, action ? 9000 : 3500);
   };
+
+  const dismissToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+
+  // Ctrl/Cmd+K opens the command palette from anywhere
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(open => !open);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Toasts requested from outside App (e.g. modals) via ui.notify()
+  useEffect(() => {
+    const onToast = (e) => showToast(e.detail.message, e.detail.type);
+    window.addEventListener('ui-toast', onToast);
+    return () => window.removeEventListener('ui-toast', onToast);
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -236,16 +263,19 @@ export default function App({ onLogout }) {
       
       if (projectData.id) {
         setProjects(prev => prev.map(p => p.id === savedProj.id ? savedProj : p));
-        showToast('Proje başarıyla güncellendi.', 'success');
+        showToast('Proje kaydedildi.', 'success');
+        setIsModalOpen(false);
+        setSelectedProject(null);
       } else {
         setProjects(prev => [...prev, savedProj]);
-        showToast('Yeni proje başarıyla eklendi.', 'success');
+        // Stay open in edit mode so tasks can be added right away
+        setSelectedProject(savedProj);
+        showToast('Proje oluşturuldu. Şimdi görevlerini ekleyebilirsin.', 'success');
       }
-      
-      setIsModalOpen(false);
-      setSelectedProject(null);
+      return savedProj;
     } catch (err) {
       showToast(err.message, 'error');
+      return null;
     }
   };
 
@@ -254,7 +284,7 @@ export default function App({ onLogout }) {
     const proj = projects.find(p => p.id === projectId);
     if (!proj) return;
     
-    if (window.confirm(`"${proj.title}" projesini silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) {
+    if (await confirmDialog({ title: 'Proje silinsin mi?', message: `"${proj.title}" ve tüm görevleri kalıcı olarak silinecek.`, confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/projects/${projectId}`, {
           method: 'DELETE'
@@ -262,7 +292,29 @@ export default function App({ onLogout }) {
         if (!res.ok) throw new Error('Proje silinemedi.');
         
         setProjects(prev => prev.filter(p => p.id !== projectId));
-        showToast('Proje başarıyla silindi.', 'info');
+        showToast('Proje silindi.', 'info', {
+          label: 'Geri al',
+          onClick: async () => {
+            try {
+              const created = await sendJson('/api/projects', 'POST', {
+                title: proj.title, description: proj.description, notes: proj.notes,
+                client: proj.client, type: proj.type, status: proj.status
+              }).then(r => r.json());
+              for (const t of proj.tasks || []) {
+                const restored = await sendJson(`/api/projects/${created.id}/tasks`, 'POST', {
+                  title: t.title, weight: t.weight, price: t.price, paid_price: t.paid_price,
+                  description: t.description, due_date: t.due_date, priority: t.priority,
+                  is_today: t.is_today, checklist: t.checklist, repeat: t.repeat
+                }).then(r => r.json());
+                if (t.is_completed) await sendJson(`/api/tasks/${restored.id}`, 'PUT', { is_completed: true });
+              }
+              await fetchProjects();
+              showToast('Proje geri alındı.', 'success');
+            } catch {
+              showToast('Proje geri alınamadı.', 'error');
+            }
+          }
+        });
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -270,6 +322,10 @@ export default function App({ onLogout }) {
   };
 
   const transferProjectToYearly = async (project) => {
+    if (yearlyPayments.some(y => y.project_id === project.id)) {
+      showToast('Bu proje için zaten bir yıllık ödeme kaydı var. Alacaklar > Yıllık Ödemeleri Yönet bölümünden düzenleyebilirsiniz.', 'info');
+      return;
+    }
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const payload = {
@@ -289,187 +345,205 @@ export default function App({ onLogout }) {
       
       if (!res.ok) throw new Error('Proje yıllık ödemelere aktarılamadı.');
       
-      showToast('Proje yıllık ödeme listesine aktarıldı. Detayları Alacaklar sekmesinden düzenleyebilirsiniz.', 'success');
+      fetchYearlyPayments();
+      showToast('Yıllık ödeme kaydı oluşturuldu. Tutar ve tarihi Alacaklar > Yıllık Ödemeleri Yönet bölümünden girin.', 'success');
     } catch (err) {
       showToast(err.message, 'error');
     }
   };
 
-  // POST: Add task inside a project
-  const addTask = async (projectId, taskTitle, taskWeight, taskPrice, taskPaidPrice, taskDescription) => {
-    try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          title: taskTitle, 
-          weight: taskWeight, 
-          price: taskPrice, 
-          paid_price: taskPaidPrice || 0, 
-          description: taskDescription || '' 
-        })
-      });
-      if (!res.ok) throw new Error('Görev eklenemedi.');
-      
-      const newTask = await res.json();
-      
-      const updatedProjects = projects.map(p => {
-        if (p.id === projectId) {
-          const updatedTasks = [...(p.tasks || []), newTask];
-          
-          // Recalculate progress
-          const totalWeight = updatedTasks.reduce((sum, t) => sum + t.weight, 0);
-          const completedWeight = updatedTasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
-          const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
-          
-          const updatedProj = { ...p, tasks: updatedTasks, progress };
-          setSelectedProject(updatedProj);
-          return updatedProj;
-        }
-        return p;
-      });
-      
-      setProjects(updatedProjects);
-      showToast('İş maddesi başarıyla eklendi.', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+  // Apply a change to one project's tasks and recompute its progress.
+  // Uses functional updates so several task calls in a row never overwrite each other.
+  const patchProjectTasks = (projectId, mutateTasks) => {
+    const recalc = (p) => {
+      const tasks = mutateTasks(p.tasks || []);
+      const totalWeight = tasks.reduce((sum, t) => sum + t.weight, 0);
+      const completedWeight = tasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
+      const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
+      return { ...p, tasks, progress };
+    };
+    setProjects(prev => prev.map(p => (p.id === projectId ? recalc(p) : p)));
+    setSelectedProject(sel => (sel && sel.id === projectId ? recalc(sel) : sel));
   };
 
-  // PUT: Update Task details (title, weight, price, paid_price, description)
-  const updateTask = async (taskId, taskData) => {
-    let targetProject = null;
+  const findTaskOwner = (taskId) => {
     for (const p of projects) {
       const t = (p.tasks || []).find(x => x.id === taskId);
-      if (t) {
-        targetProject = p;
-        break;
-      }
+      if (t) return { project: p, task: t };
     }
-    if (!targetProject) return;
+    return null;
+  };
 
+  const sendJson = (url, method, body) => fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  // Merge a server task (and a spawned recurring copy, if any) into the project
+  const applyTaskResult = (projectId, taskId, result) => {
+    const { spawned, ...task } = result;
+    patchProjectTasks(projectId, tasks => {
+      const next = tasks.map(t => (t.id === taskId ? task : t));
+      return spawned ? [...next, spawned] : next;
+    });
+    if (spawned) {
+      showToast('Tekrarlayan görevin bir sonraki hali eklendi.', 'info');
+    }
+  };
+
+  // POST: Add task inside a project (extra = priority, is_today, checklist, repeat)
+  const addTask = async (projectId, taskTitle, taskWeight, taskPrice, taskPaidPrice, taskDescription, taskDueDate, extra = {}) => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskData)
+      const res = await sendJson(`/api/projects/${projectId}/tasks`, 'POST', {
+        title: taskTitle,
+        weight: taskWeight,
+        price: taskPrice,
+        paid_price: taskPaidPrice || 0,
+        description: taskDescription || '',
+        due_date: taskDueDate || null,
+        ...extra
       });
-      if (!res.ok) throw new Error('Görev güncellenemedi.');
-      
-      const updatedTask = await res.json();
-
-      const updatedProjects = projects.map(p => {
-        if (p.id === targetProject.id) {
-          const updatedTasks = p.tasks.map(t => t.id === taskId ? updatedTask : t);
-          
-          // Recalculate progress
-          const totalWeight = updatedTasks.reduce((sum, t) => sum + t.weight, 0);
-          const completedWeight = updatedTasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
-          const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
-          
-          const updatedProj = { ...p, tasks: updatedTasks, progress };
-          setSelectedProject(updatedProj);
-          return updatedProj;
-        }
-        return p;
-      });
-
-      setProjects(updatedProjects);
-      showToast('Görev başarıyla güncellendi.', 'success');
+      if (!res.ok) throw new Error('Görev eklenemedi.');
+      const newTask = await res.json();
+      patchProjectTasks(projectId, tasks => [...tasks, newTask]);
+      showToast('Görev eklendi.', 'success');
+      return newTask;
     } catch (err) {
       showToast(err.message, 'error');
+      return null;
+    }
+  };
+
+  // PUT: Update Task details
+  const updateTask = async (taskId, taskData, { silent = false } = {}) => {
+    const owner = findTaskOwner(taskId);
+    if (!owner) return false;
+    try {
+      const res = await sendJson(`/api/tasks/${taskId}`, 'PUT', taskData);
+      if (!res.ok) throw new Error('Görev güncellenemedi.');
+      applyTaskResult(owner.project.id, taskId, await res.json());
+      if (!silent) showToast('Görev güncellendi.', 'success');
+      return true;
+    } catch (err) {
+      showToast(err.message, 'error');
+      return false;
     }
   };
 
   // PUT: Toggle Task Complete Status
   const toggleTask = async (taskId) => {
-    let targetTask = null;
-    let targetProject = null;
-
-    for (const p of projects) {
-      const t = (p.tasks || []).find(x => x.id === taskId);
-      if (t) {
-        targetTask = t;
-        targetProject = p;
-        break;
-      }
-    }
-
-    if (!targetTask || !targetProject) return;
-
+    const owner = findTaskOwner(taskId);
+    if (!owner) return;
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_completed: !targetTask.is_completed })
-      });
+      const res = await sendJson(`/api/tasks/${taskId}`, 'PUT', { is_completed: !owner.task.is_completed });
       if (!res.ok) throw new Error('Görev durumu güncellenemedi.');
-      
-      const updatedTask = await res.json();
-
-      const updatedProjects = projects.map(p => {
-        if (p.id === targetProject.id) {
-          const updatedTasks = p.tasks.map(t => t.id === taskId ? updatedTask : t);
-          
-          // Recalculate progress
-          const totalWeight = updatedTasks.reduce((sum, t) => sum + t.weight, 0);
-          const completedWeight = updatedTasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
-          const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
-          
-          const updatedProj = { ...p, tasks: updatedTasks, progress };
-          setSelectedProject(updatedProj);
-          return updatedProj;
-        }
-        return p;
-      });
-
-      setProjects(updatedProjects);
+      applyTaskResult(owner.project.id, taskId, await res.json());
     } catch (err) {
       showToast(err.message, 'error');
     }
   };
 
-  // DELETE: Delete Task
+  // DELETE: Delete Task (with undo)
   const deleteTask = async (taskId) => {
-    let targetProject = null;
-
-    for (const p of projects) {
-      const t = (p.tasks || []).find(x => x.id === taskId);
-      if (t) {
-        targetProject = p;
-        break;
-      }
-    }
-
-    if (!targetProject) return;
-
+    const owner = findTaskOwner(taskId);
+    if (!owner) return;
+    const snapshot = owner.task;
+    const projectId = owner.project.id;
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'DELETE'
-      });
+      const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Görev silinemedi.');
-
-      const updatedProjects = projects.map(p => {
-        if (p.id === targetProject.id) {
-          const updatedTasks = p.tasks.filter(t => t.id !== taskId);
-          
-          // Recalculate progress
-          const totalWeight = updatedTasks.reduce((sum, t) => sum + t.weight, 0);
-          const completedWeight = updatedTasks.reduce((sum, t) => sum + (t.is_completed ? t.weight : 0), 0);
-          const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
-          
-          const updatedProj = { ...p, tasks: updatedTasks, progress };
-          setSelectedProject(updatedProj);
-          return updatedProj;
+      patchProjectTasks(projectId, tasks => tasks.filter(t => t.id !== taskId));
+      showToast('Görev silindi.', 'info', {
+        label: 'Geri al',
+        onClick: async () => {
+          const restored = await addTask(
+            projectId, snapshot.title, snapshot.weight, parseFloat(snapshot.price) || 0,
+            parseFloat(snapshot.paid_price) || 0, snapshot.description, snapshot.due_date,
+            { priority: snapshot.priority, is_today: snapshot.is_today, checklist: snapshot.checklist, repeat: snapshot.repeat }
+          );
+          if (restored && snapshot.is_completed) await sendJson(`/api/tasks/${restored.id}`, 'PUT', { is_completed: true }).then(r => r.json()).then(t => applyTaskResult(projectId, restored.id, t));
         }
-        return p;
       });
-
-      setProjects(updatedProjects);
-      showToast('Görev silindi.', 'info');
     } catch (err) {
       showToast(err.message, 'error');
     }
+  };
+
+  // PUT: persist a new task order
+  const reorderTasks = async (projectId, orderedIds) => {
+    patchProjectTasks(projectId, tasks => orderedIds.map(id => tasks.find(t => t.id === id)).filter(Boolean));
+    try {
+      await sendJson(`/api/projects/${projectId}/tasks/reorder`, 'PUT', { ids: orderedIds });
+    } catch {
+      showToast('Sıralama kaydedilemedi.', 'error');
+    }
+  };
+
+  // Payment history of a task
+  const addTaskPayment = async (taskId, payload) => {
+    const owner = findTaskOwner(taskId);
+    if (!owner) return false;
+    try {
+      const res = await sendJson(`/api/tasks/${taskId}/payments`, 'POST', payload);
+      if (!res.ok) throw new Error('Ödeme kaydedilemedi.');
+      const task = await res.json();
+      patchProjectTasks(owner.project.id, tasks => tasks.map(t => (t.id === taskId ? task : t)));
+      showToast('Ödeme kaydedildi.', 'success');
+      return true;
+    } catch (err) {
+      showToast(err.message, 'error');
+      return false;
+    }
+  };
+
+  const deleteTaskPayment = async (taskId, paymentId) => {
+    const owner = findTaskOwner(taskId);
+    if (!owner) return;
+    try {
+      const res = await fetch(`/api/task-payments/${paymentId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Ödeme silinemedi.');
+      const task = await res.json();
+      patchProjectTasks(owner.project.id, tasks => tasks.map(t => (t.id === taskId ? task : t)));
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Templates
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch('/api/templates');
+      if (res.ok) setTemplates(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const saveTemplate = async (name, project) => {
+    try {
+      const res = await sendJson('/api/templates', 'POST', { name, type: project.type, tasks: project.tasks || [] });
+      if (!res.ok) throw new Error('Şablon kaydedilemedi.');
+      await fetchTemplates();
+      showToast(`"${name}" şablonu kaydedildi.`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const deleteTemplate = async (id) => {
+    await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+    fetchTemplates();
+  };
+
+  const applyTemplate = async (projectId, template) => {
+    for (const t of template.tasks || []) {
+      await sendJson(`/api/projects/${projectId}/tasks`, 'POST', {
+        title: t.title, weight: t.weight, price: t.price || 0, description: t.description || '',
+        priority: t.priority, checklist: t.checklist
+      }).then(r => r.json()).then(task => patchProjectTasks(projectId, tasks => [...tasks, task]));
+    }
+    showToast(`"${template.name}" şablonundan ${(template.tasks || []).length} görev eklendi.`, 'success');
   };
 
   const handleEditClick = (project) => {
@@ -647,7 +721,7 @@ export default function App({ onLogout }) {
     const goal = goals.find(g => g.id === goalId);
     if (!goal) return;
     
-    if (window.confirm(`"${goal.title}" hedefini silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) {
+    if (await confirmDialog({ title: 'Hedef silinsin mi?', message: `"${goal.title}" kalıcı olarak silinecek.`, confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/goals/${goalId}`, {
           method: 'DELETE'
@@ -655,7 +729,18 @@ export default function App({ onLogout }) {
         if (!res.ok) throw new Error('Hedef silinemedi.');
         
         setGoals(prev => prev.filter(g => g.id !== goalId));
-        showToast('Hedef başarıyla silindi.', 'info');
+        showToast('Hedef silindi.', 'info', {
+          label: 'Geri al',
+          onClick: async () => {
+            const res = await sendJson('/api/goals', 'POST', {
+              title: goal.title, why_note: goal.why_note, description: goal.description, category: goal.category,
+              target_date: goal.target_date, priority: goal.priority, progress_type: goal.progress_type,
+              current_value: goal.current_value, target_value: goal.target_value, unit: goal.unit, link_url: goal.link_url
+            });
+            if (res.ok) { await fetchGoals(); showToast('Hedef geri alındı.', 'success'); }
+            else showToast('Hedef geri alınamadı.', 'error');
+          }
+        });
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -835,7 +920,7 @@ export default function App({ onLogout }) {
     const habit = habits.find(h => h.id === habitId);
     if (!habit) return;
     
-    if (window.confirm(`"${habit.title}" alışkanlığını silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) {
+    if (await confirmDialog({ title: 'Alışkanlık silinsin mi?', message: `"${habit.title}" ve geçmiş kayıtları kalıcı olarak silinecek.`, confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/habits/${habitId}`, {
           method: 'DELETE'
@@ -1066,7 +1151,7 @@ export default function App({ onLogout }) {
   };
 
   const deleteRoutine = async (id) => {
-    if (window.confirm('Bu rutini silmek istediğinize emin misiniz?')) {
+    if (await confirmDialog({ title: 'Rutin silinsin mi?', message: 'Rutin ve adımları kalıcı olarak silinecek.', confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/routines/${id}`, {
           method: 'DELETE'
@@ -1121,8 +1206,27 @@ export default function App({ onLogout }) {
     }
   };
 
+  // Append a quick note to today's journal entry (keeps mood and earlier text)
+  const addQuickJournalNote = async (text) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const existing = journalEntries.find(e => {
+      const d = new Date(e.entry_date);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` === todayStr;
+    });
+    const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const line = `[${time}] ${text}`;
+    await saveJournalEntry({
+      entry_date: todayStr,
+      mood_rating: existing?.mood_rating ?? undefined,
+      content: existing?.content ? `${existing.content}\n${line}` : line,
+      tags: existing?.tags || []
+    });
+  };
+
   const deleteJournalEntry = async (id) => {
-    if (window.confirm('Bu günlük kaydını silmek istediğinize emin misiniz?')) {
+    if (await confirmDialog({ title: 'Günlük kaydı silinsin mi?', message: 'Bu günün kaydı kalıcı olarak silinecek.', confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/journal/${id}`, {
           method: 'DELETE'
@@ -1159,6 +1263,11 @@ export default function App({ onLogout }) {
   };
 
   const receivables = buildReceivables(projects, yearlyPayments, usdTryRate);
+  const fmtMoney = (tryValue) => {
+    if (hideAmounts) return displayCurrency === 'USD' ? '*** $' : '*** ₺';
+    const value = displayCurrency === 'USD' ? tryValue / usdTryRate : tryValue;
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: displayCurrency, maximumFractionDigits: 0 }).format(value);
+  };
   const reminderCount = receivables.reminders.filter(r => r.diffDays <= 7).length;
 
   // Compute unique clients list
@@ -1167,7 +1276,13 @@ export default function App({ onLogout }) {
   // Filtering projects list by status AND client
   const filteredProjects = projects
     .filter(p => currentFilter === 'all' || p.status === currentFilter)
-    .filter(p => selectedClient === 'all' || p.client === selectedClient);
+    .filter(p => selectedClient === 'all' || p.client === selectedClient)
+    .filter(p => {
+      const q = projectSearch.trim().toLocaleLowerCase('tr');
+      if (!q) return true;
+      const hay = [p.title, p.client, p.description, p.notes, ...(p.tasks || []).map(t => t.title)].join(' ').toLocaleLowerCase('tr');
+      return q.split(/\s+/).every(w => hay.includes(w));
+    });
 
   return (
     <div className={theme === 'light' ? 'light-theme' : ''}>
@@ -1205,6 +1320,15 @@ export default function App({ onLogout }) {
         </div>
 
         <div className="sidebar-footer">
+          <button className="theme-toggle-btn" onClick={() => setPaletteOpen(true)}>
+            <Search size={18} />
+            Ara <kbd className="nav-kbd">Ctrl K</kbd>
+          </button>
+          <a className="theme-toggle-btn" href="/api/backup" download title="Tüm verilerin JSON yedeği">
+            <Download size={18} />
+            Yedek indir
+          </a>
+
           {/* Theme switcher */}
           <button className="theme-toggle-btn" onClick={toggleTheme}>
             {theme === 'dark' ? (
@@ -1302,6 +1426,17 @@ export default function App({ onLogout }) {
                   >
                     <CheckCircle2 /> Tamamlananlar
                   </button>
+                </div>
+
+                <div className="project-search glass-card">
+                  <Search size={16} />
+                  <input
+                    type="text"
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                    placeholder="Projelerde ara..."
+                  />
+                  {projectSearch && <button onClick={() => setProjectSearch('')} aria-label="Aramayı temizle">×</button>}
                 </div>
 
                 {uniqueClients.length > 0 && (
@@ -1408,7 +1543,7 @@ export default function App({ onLogout }) {
                   <FolderOpen style={{ width: '56px', height: '56px' }} />
                   <h3>Proje Bulunamadı</h3>
                   <p>
-                    {currentFilter === 'all' && selectedClient === 'all'
+                    {currentFilter === 'all' && selectedClient === 'all' && !projectSearch
                       ? 'Henüz hiçbir proje oluşturmadınız.' 
                       : 'Bu filtrelere uygun bir proje bulunamadı.'}
                   </p>
@@ -1584,6 +1719,15 @@ export default function App({ onLogout }) {
             onSaveEntry={saveJournalEntry}
             onDeleteEntry={deleteJournalEntry}
           />
+        ) : activeTab === 'calendar' ? (
+          <CalendarDashboard
+            receivables={receivables}
+            projects={projects}
+            goals={goals}
+            onOpenProject={handleOpenProjectById}
+            onOpenGoal={handleEditGoalClick}
+            fmt={fmtMoney}
+          />
         ) : activeTab === 'receivables' ? (
           <ReceivablesDashboard
             receivables={receivables}
@@ -1605,11 +1749,13 @@ export default function App({ onLogout }) {
             projects={projects}
             displayCurrency={displayCurrency}
             hideAmounts={hideAmounts}
+            setHideAmounts={setHideAmounts}
             usdTryRate={usdTryRate}
             onNavigate={setActiveTab}
             onOpenProject={handleOpenProjectById}
             onLogHabit={logHabit}
             onToggleRoutineComplete={toggleRoutineComplete}
+            onToggleTask={toggleTask}
           />
         )}
       </main>
@@ -1629,6 +1775,13 @@ export default function App({ onLogout }) {
         onDeleteTask={deleteTask}
         onUpdateTask={updateTask}
         onTransferToYearly={transferProjectToYearly}
+        templates={templates}
+        onSaveTemplate={saveTemplate}
+        onDeleteTemplate={deleteTemplate}
+        onApplyTemplate={applyTemplate}
+        onReorderTasks={reorderTasks}
+        onAddPayment={addTaskPayment}
+        onDeletePayment={deleteTaskPayment}
         displayCurrency={displayCurrency}
         hideAmounts={hideAmounts}
         usdTryRate={usdTryRate}
@@ -1656,6 +1809,31 @@ export default function App({ onLogout }) {
         onSaveHabit={saveHabit}
       />
 
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        projects={projects}
+        goals={goals}
+        habits={habits}
+        routines={routines}
+        journalEntries={journalEntries}
+        clients={uniqueClients}
+        onNavigate={setActiveTab}
+        onOpenProject={handleOpenProjectById}
+        onOpenGoal={handleEditGoalClick}
+        onOpenHabit={handleEditHabitClick}
+      />
+
+      <QuickAdd
+        projects={projects}
+        hidden={isModalOpen || isGoalModalOpen || isHabitModalOpen}
+        onAddTask={addTask}
+        onAddNote={addQuickJournalNote}
+        onNewProject={handleCreateClick}
+        onNewGoal={handleCreateGoalClick}
+        onNewHabit={handleCreateHabitClick}
+      />
+
       {/* Toast Notifications */}
       <div className="toast-container">
         {toasts.map(t => (
@@ -1664,6 +1842,14 @@ export default function App({ onLogout }) {
               {t.type === 'success' ? <CheckCircle /> : <Info />}
             </div>
             <div className="toast-message">{t.message}</div>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => { dismissToast(t.id); t.action.onClick(); }}
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

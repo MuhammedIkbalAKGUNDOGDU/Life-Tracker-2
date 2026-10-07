@@ -11,9 +11,14 @@ import {
   Plus,
   Minus,
   AlertCircle,
-  Clock
+  Clock,
+  Star,
+  CheckSquare,
+  BarChart3,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { dailyProgress } from '../daily';
+import { dailyProgress, habitsToday } from '../daily';
 import { dueLabel, dueColor } from '../receivables';
 
 const greeting = () => {
@@ -32,11 +37,13 @@ export default function HomeDashboard({
   projects,
   displayCurrency,
   hideAmounts,
+  setHideAmounts,
   usdTryRate,
   onNavigate,
   onOpenProject,
   onLogHabit,
-  onToggleRoutineComplete
+  onToggleRoutineComplete,
+  onToggleTask
 }) {
   const progress = dailyProgress(habits, routines);
   const { totals, reminders } = receivables;
@@ -53,6 +60,42 @@ export default function HomeDashboard({
     .filter(g => !g.is_completed && !(g.progress_type === 'metric' && parseFloat(g.current_value) >= parseFloat(g.target_value)))
     .slice(0, 4);
 
+
+  // Tasks for today: starred ones, plus non-payment tasks due today or overdue
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todayTasks = [];
+  projects.forEach(p => (p.tasks || []).forEach(t => {
+    if (t.is_completed) return;
+    const due = t.due_date ? new Date(t.due_date) : null;
+    if (due) due.setHours(0, 0, 0, 0);
+    const isPayment = p.type === 'external' && parseFloat(t.price) > parseFloat(t.paid_price || 0);
+    const dueNow = due && due <= startOfToday && !isPayment;
+    if (t.is_today || dueNow) todayTasks.push({ task: t, project: p, overdue: due && due < startOfToday });
+  }));
+  todayTasks.sort((a, b) => (a.task.priority || 2) - (b.task.priority || 2));
+
+  // Weekly summary (last 7 days)
+  const weekStart = new Date(startOfToday);
+  weekStart.setDate(weekStart.getDate() - 6);
+  let tasksDone = 0;
+  projects.forEach(p => (p.tasks || []).forEach(t => {
+    if (t.completed_at && new Date(t.completed_at) >= weekStart) tasksDone += 1;
+  }));
+  let habitRequired = 0;
+  let habitDone = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfToday);
+    d.setDate(d.getDate() - i);
+    const list = habitsToday(habits, d);
+    habitRequired += list.length;
+    habitDone += list.filter(h => h.done).length;
+  }
+  const habitPercent = habitRequired > 0 ? Math.round((habitDone / habitRequired) * 100) : 0;
+  const collectedWeek = receivables.entries
+    .filter(e => e.kind === 'paid' && e.date >= weekStart && e.date <= new Date(startOfToday.getTime() + 86399999))
+    .reduce((sum, e) => sum + e.amount, 0);
+
   const cycleHabit = ({ habit, dateStr, count, target }, delta) => {
     let next;
     if (delta !== undefined) next = Math.max(0, Math.min(target, count + delta));
@@ -60,16 +103,23 @@ export default function HomeDashboard({
     onLogHabit(habit.id, dateStr, next);
   };
 
-  const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const todayLabel = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div className="home-page">
       <section className="home-greeting">
         <div>
           <h2>{greeting()}, İkbal 👋</h2>
-          <p>{today}</p>
+          <p>{todayLabel}</p>
         </div>
         <div className="home-quick">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setHideAmounts(!hideAmounts)}
+            title={hideAmounts ? 'Tutarları göster' : 'Tutarları gizle'}
+          >
+            {hideAmounts ? <EyeOff size={16} /> : <Eye size={16} />} Tutarlar
+          </button>
           <button className="btn btn-secondary" onClick={() => onNavigate('projects')}><FolderKanban size={16} /> Projeler</button>
           <button className="btn btn-secondary" onClick={() => onNavigate('receivables')}><Wallet size={16} /> Alacaklar</button>
           <button className="btn btn-secondary" onClick={() => onNavigate('journal')}><BookOpen size={16} /> Günlük yaz</button>
@@ -104,6 +154,26 @@ export default function HomeDashboard({
       <div className="home-columns">
         {/* Left: today + reminders */}
         <div className="home-col">
+          {todayTasks.length > 0 && (
+            <section className="glass-card home-card">
+              <div className="home-card-head">
+                <h3><Star size={18} /> Bugünün görevleri</h3>
+                <button className="home-link" onClick={() => onNavigate('projects')}>Projeler <ArrowRight size={14} /></button>
+              </div>
+              <div className="home-todo">
+                {todayTasks.map(({ task, project, overdue }) => (
+                  <div key={task.id} className="home-todo-row">
+                    <button className="home-check" onClick={() => onToggleTask(task.id)} aria-label="Görevi tamamla" />
+                    <span className="home-todo-title" style={{ cursor: 'pointer' }} onClick={() => onOpenProject(project.id)}>
+                      <i className={`prio-dot p${task.priority || 2}`} style={{ display: 'inline-block' }} /> {task.title}
+                    </span>
+                    <small style={{ color: overdue ? '#ef4444' : undefined }}>{overdue ? 'gecikti · ' : ''}{project.title}</small>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="glass-card home-card">
             <div className="home-card-head">
               <h3><Flame size={18} /> Bugün yapılacaklar</h3>
@@ -238,6 +308,17 @@ export default function HomeDashboard({
                 })}
               </div>
             )}
+          </section>
+
+          <section className="glass-card home-card">
+            <div className="home-card-head">
+              <h3><BarChart3 size={18} /> Son 7 gün</h3>
+            </div>
+            <div className="week-grid">
+              <div><CheckSquare size={16} /><strong>{tasksDone}</strong><small>görev tamamlandı</small></div>
+              <div><Flame size={16} /><strong>%{habitPercent}</strong><small>alışkanlık ({habitDone}/{habitRequired})</small></div>
+              <div><Clock size={16} /><strong>{fmt(collectedWeek)}</strong><small>tahsil edildi</small></div>
+            </div>
           </section>
         </div>
       </div>
