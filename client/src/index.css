@@ -3250,7 +3250,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 /* short desktop windows: sidebar scrolls instead of cutting off the footer */
 @media (min-width: 901px) {
   .sidebar { overflow-y: auto; scrollbar-width: thin; }
-  .sidebar-top { min-height: 0; }
 }
 @media (min-width: 901px) and (max-height: 820px) {
   .sidebar { padding: 18px 14px; }
@@ -3345,3 +3344,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .manage-form input, .manage-form select { padding: 10px 12px; }
 .manage-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .login-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; text-align: left; }
+
+/* sidebar tool row */
+.sidebar-tools { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.sidebar-tools > * { display: inline-flex; align-items: center; justify-content: center; height: 40px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(148,163,184,.08); color: var(--text-main); cursor: pointer; text-decoration: none; }
+.sidebar-tools > *:hover { background: rgba(148,163,184,.2); }
+.sidebar-footer .user-profile { min-width: 0; }

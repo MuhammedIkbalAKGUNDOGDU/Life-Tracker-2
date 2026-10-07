@@ -36,34 +36,10 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || '',
 });
 
-// Authentication: one account, created in the app on first visit (see auth.js).
-// AUTH_DISABLED=true skips it entirely (local development only).
-const authDisabled = process.env.AUTH_DISABLED === 'true';
-if (authDisabled) console.warn('⚠️  AUTH_DISABLED=true: authentication is OFF (local development only).');
-const authReady = createAuth({ pool, disabled: authDisabled });
-authReady.catch(err => { console.error('❌ Auth init failed:', err.message); process.exit(1); });
-const useAuth = (name) => async (req, res, next) => {
-  try {
-    return (await authReady)[name](req, res, next);
-  } catch (err) {
-    return next(err);
-  }
-};
-app.get('/api/auth/status', useAuth('status'));
-app.post('/api/auth/setup', useAuth('setup'));
-app.post('/api/auth/login', useAuth('login'));
-app.post('/api/auth/logout', useAuth('logout'));
-app.post('/api/auth/change-password', useAuth('requireAuth'), useAuth('changePassword'));
-app.use('/api', useAuth('requireAuth'));
-
-// Test DB Connection on startup
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('❌ PostgreSQL Database Connection Error:', err.message);
-  } else {
-    console.log('✅ PostgreSQL Database Connected Successfully at:', res.rows[0].now);
-    // Auto-migrate to add due_date column and verify yearly_payments, options, and items tables
-    pool.query(`
+// ---------- Startup: wait for the database, migrate, then everything else ----------
+// Everything below runs strictly one after the other. (Running the migrations in parallel with the
+// auth setup used to race on CREATE TABLE and could silently roll the whole migration back.)
+const MIGRATION_SQL = `
       ALTER TABLE project_tasks 
       ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL;
 
@@ -141,15 +117,53 @@ pool.query('SELECT NOW()', (err, res) => {
       FROM yearly_payments
       WHERE amount > 0 AND id NOT IN (SELECT DISTINCT yearly_payment_id FROM yearly_payment_items)
       ON CONFLICT DO NOTHING;
-    `, (migrateErr) => {
-      if (migrateErr) {
-        console.error('❌ Database migration error:', migrateErr.message);
-      } else {
-        console.log('✅ Database migration successful: yearly payments options, items, and structures verified.');
-      }
-    });
+    `;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+async function waitForDatabase() {
+  for (let i = 1; i <= 40; i++) {
+    try {
+      const res = await pool.query('SELECT NOW()');
+      console.log('✅ PostgreSQL Database Connected Successfully at:', res.rows[0].now);
+      return;
+    } catch (err) {
+      console.log(`⏳ Waiting for the database (${i}/40): ${err.message}`);
+      await sleep(2000);
+    }
   }
-});
+  throw new Error('Database did not become available');
+}
+
+const health = require('./health');
+const dbReady = (async () => {
+  await waitForDatabase();
+  await pool.query(MIGRATION_SQL);
+  console.log('✅ Database migration successful: yearly payments options, items, and structures verified.');
+  await health.migrate(pool);
+  console.log('✅ Health tables ready');
+})();
+// If the database never comes up or a migration fails, exit so Docker restarts and retries
+dbReady.catch(err => { console.error('❌ Startup failed:', err.message); process.exit(1); });
+
+// Authentication: one account, created in the app on first visit (see auth.js).
+// AUTH_DISABLED=true skips it entirely (local development only).
+const authDisabled = process.env.AUTH_DISABLED === 'true';
+if (authDisabled) console.warn('⚠️  AUTH_DISABLED=true: authentication is OFF (local development only).');
+const authReady = dbReady.then(() => createAuth({ pool, disabled: authDisabled }));
+authReady.catch(err => { console.error('❌ Auth init failed:', err.message); process.exit(1); });
+const useAuth = (name) => async (req, res, next) => {
+  try {
+    return (await authReady)[name](req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+};
+app.get('/api/auth/status', useAuth('status'));
+app.post('/api/auth/setup', useAuth('setup'));
+app.post('/api/auth/login', useAuth('login'));
+app.post('/api/auth/logout', useAuth('logout'));
+app.post('/api/auth/change-password', useAuth('requireAuth'), useAuth('changePassword'));
+app.use('/api', useAuth('requireAuth'));
 
 // API Routes
 
@@ -1713,8 +1727,6 @@ app.delete('/api/yearly-payment-options/:id', async (req, res) => {
 require('./extras')(app, pool);
 
 // Health: workouts + nutrition
-const health = require('./health');
-health.migrate(pool).then(() => console.log('✅ Health tables ready')).catch(err => console.error('❌ Health migration error:', err.message));
 health.register(app, pool);
 
 // Send a test reminder right now (needs TELEGRAM_* env vars)

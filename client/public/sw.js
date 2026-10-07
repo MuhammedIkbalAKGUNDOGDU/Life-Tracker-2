@@ -1,6 +1,6 @@
 // Minimal service worker: lets the app install and open instantly.
 // API calls are never cached, so data is always live.
-const CACHE = 'planner-shell-v1';
+const CACHE = 'planner-shell-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])).then(() => self.skipWaiting()));
@@ -27,7 +27,10 @@ self.addEventListener('fetch', (e) => {
   // Built assets (hashed file names): cache first
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res.ok) caches.open(CACHE).then(c => c.put(req, res.clone()));
+      if (res.ok) {
+        const copy = res.clone(); // must happen now: the page consumes `res` right after we return it
+        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+      }
       return res;
     }))
   );

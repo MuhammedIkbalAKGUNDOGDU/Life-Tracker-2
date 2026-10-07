@@ -1393,48 +1393,22 @@ export default function App({ onLogout, username }) {
         </div>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle-btn" onClick={() => setPaletteOpen(true)}>
-            <Search size={18} />
-            Ara <kbd className="nav-kbd">Ctrl K</kbd>
-          </button>
-          <a className="theme-toggle-btn" href="/api/backup" download title="Tüm verilerin JSON yedeği">
-            <Download size={18} />
-            Yedek indir
-          </a>
-
-          {/* Theme switcher */}
-          <button className="theme-toggle-btn" onClick={toggleTheme}>
-            {theme === 'dark' ? (
-              <>
-                <Sun size={18} />
-                Açık Tema
-              </>
-            ) : (
-              <>
-                <Moon size={18} />
-                Koyu Tema
-              </>
-            )}
-          </button>
-
-          {onLogout && (
-            <button className="theme-toggle-btn" onClick={() => setAccountOpen(true)}>
-              <User size={18} />
-              Hesap{username ? ` (${username})` : ''}
+          {/* One compact row of tools instead of five tall buttons (the old stack overlapped the menu on shorter windows) */}
+          <div className="sidebar-tools">
+            <button onClick={() => setPaletteOpen(true)} title="Ara (Ctrl+K)" aria-label="Ara"><Search size={18} /></button>
+            <a href="/api/backup" download title="Tüm verilerin JSON yedeği" aria-label="Yedek indir"><Download size={18} /></a>
+            <button onClick={toggleTheme} title={theme === 'dark' ? 'Açık tema' : 'Koyu tema'} aria-label="Tema değiştir">
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-          )}
-          {onLogout && (
-            <button className="theme-toggle-btn" onClick={onLogout}>
-              <LogOut size={18} />
-              Çıkış Yap
-            </button>
-          )}
+            {onLogout && <button onClick={() => setAccountOpen(true)} title={`Hesap${username ? ` (${username})` : ''}`} aria-label="Hesap"><User size={18} /></button>}
+            {onLogout && <button onClick={onLogout} title="Çıkış yap" aria-label="Çıkış yap"><LogOut size={18} /></button>}
+          </div>
 
           <div className="user-profile">
-            <div className="avatar">İ</div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="avatar">{(username || 'İ').charAt(0).toUpperCase()}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <span className="welcome-text" style={{ fontSize: '13px' }}>Hoş geldin,</span>
-              <strong className="user-highlight" style={{ fontSize: '14px' }}>İkbal</strong>
+              <strong className="user-highlight" style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{username || 'İkbal'}</strong>
             </div>
           </div>
         </div>
