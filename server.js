@@ -1657,6 +1657,11 @@ app.delete('/api/yearly-payment-options/:id', async (req, res) => {
 
 require('./extras')(app, pool);
 
+// Health: workouts + nutrition
+const health = require('./health');
+health.migrate(pool).then(() => console.log('✅ Health tables ready')).catch(err => console.error('❌ Health migration error:', err.message));
+health.register(app, pool);
+
 // Send a test reminder right now (needs TELEGRAM_* env vars)
 app.post('/api/reminders/test', async (req, res) => {
   const reminders = require('./reminders');
@@ -1684,6 +1689,7 @@ app.get('*', (req, res) => {
 
 // Start Server
 require('./reminders').start(pool);
+require('./telegram').start(pool);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);

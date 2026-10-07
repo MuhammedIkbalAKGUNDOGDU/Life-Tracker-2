@@ -4,7 +4,7 @@ import { useState } from 'react';
 // The parent receives a number on every valid keystroke; limits (min/max) are applied
 // when leaving the field, so typing is never fought with.
 //   <NumInput value={n} onChange={setN} min={1} integer />
-export default function NumInput({ value, onChange, min, max, integer = false, emptyValue, ...rest }) {
+export default function NumInput({ value, onChange, min, max, integer = false, emptyValue, onBlur, ...rest }) {
   const toText = (v) => (v === null || v === undefined || Number.isNaN(v) ? '' : String(v));
   const [text, setText] = useState(toText(value));
   const [lastValue, setLastValue] = useState(value);
@@ -37,7 +37,8 @@ export default function NumInput({ value, onChange, min, max, integer = false, e
     }
   };
 
-  const handleBlur = () => {
+  const handleBlur = (e) => {
+    if (onBlur) onBlur(e);
     const n = parse(text);
     if (n === null) {
       const fallback = emptyValue !== undefined ? emptyValue : (min !== undefined ? clamp(0) : 0);

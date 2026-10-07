@@ -88,6 +88,32 @@ rm data.sql
 ### 4. Giriş
 `https://planner.alanadin.com` adresini aç, `APP_PASSWORD` ile giriş yap. 5 hatalı denemeden sonra o IP 15 dakika kilitlenir. Oturum 30 gün sürer. Sol menüde "Çıkış Yap" var.
 
+## Sağlık: spor ve beslenme
+Menüde **Sağlık** sekmesi: **Spor** (gün → antrenman → hareket → set; geçen seferin setleri, öneri, rekor, hacim ve 1RM grafikleri, vücut kilosu) ve **Beslenme** (kalori ve makrolar, öğünler, günlük hedefler). Telefonda alt menüyle rahat kullanılacak şekilde tasarlandı. Siteyi telefonda tarayıcıdan "Ana ekrana ekle" ile uygulama gibi kullanabilirsiniz.
+
+- **Yemek bilgisi** ücretsiz kaynaklardan gelir: kendi kaydettiğiniz yemekler ve [Open Food Facts](https://world.openfoodfacts.org) (paketli ürünler). Open Food Facts değerleri gönüllüler tarafından girilir, paketle karşılaştırın. Bulamazsanız yemeği elle ekleyin (100 g değerleriyle).
+- **Günlük hedefler** boy/kilo/yaş/aktivite/hedefe göre otomatik hesaplanır (Mifflin-St Jeor); istediğiniz değeri kendiniz yazarak ezebilirsiniz (Beslenme > dişli simgesi).
+
+## Telegram botu: spor ve yemek girişi (isteğe bağlı, ücretsiz)
+Aşağıdaki "Telegram ödeme hatırlatması" bölümündeki gibi bir bot oluşturup `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` yazdığınızda aynı bot veri girişi için de çalışır. Yapay zekâ kullanmaz, tamamen ücretsizdir. Bot yalnızca sizin chat'inize cevap verir.
+
+| Yazın | Ne olur |
+|---|---|
+| `bench 80x8 80x8 75x10` | Setleri bugünün antrenmanına ekler (onay ister) |
+| `squat 100x5x3` | 100 kg × 5 tekrarı 3 set ekler |
+| `bench 80x8, squat 100x5x3` | Birden fazla hareket |
+| `bench` / `bench 5` | O hareketin son 3 / 5 antrenmanını gösterir, "Bugüne ekle" ve "Geçen seferkini kopyala" düğmeleri çıkar |
+| `/antrenman` | Hareket seç, ağırlık ve tekrarı düğmelerle ayarla, "Seti kaydet" |
+| `kahvaltı: yumurta 3 adet, ekmek 60g` | Yemekleri bulup kalori ve makroyu hesaplar (onay ister) |
+| `tavuk göğsü 200g` | Öğünü saate göre seçer |
+| `kilo 82.4` | Vücut kilosunu kaydeder |
+| `/bugun`, `/kalan`, `/son`, `/geri`, `/yardim` | Özet, kalan kalori/protein, son antrenman, son kaydı sil, yardım |
+
+Notlar:
+- Bot "long polling" ile çalışır, domain, webhook veya açık port gerekmez.
+- **Aynı bot token'ı aynı anda yalnızca bir yerde çalışmalıdır.** Sunucuda çalıştırıyorsanız bilgisayarınızdaki `.env`'de `TELEGRAM_*` değerlerini boş bırakın, yoksa iki taraf birbirini engeller (loglarda "another instance is polling" yazar).
+- Yemek adı veritabanında yoksa bot Open Food Facts'te arar ve seçenek sunar. Seçtiğiniz yemek kaydedilir, bir sonraki sefer doğrudan bulunur.
+
 ## Telegram ödeme hatırlatması (isteğe bağlı)
 Vadesi geçen ve 3 gün içinde gelen ödemeler her gün sabah Telegram'dan size mesaj olarak gelir.
 1. Telegram'da `@BotFather` ile bir bot oluşturup token'ı alın.

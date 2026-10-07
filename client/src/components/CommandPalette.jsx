@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, FolderKanban, CheckSquare, Users, Target, Flame, Sparkles, BookOpen, Home, Wallet, CalendarDays } from 'lucide-react';
+import { Search, FolderKanban, CheckSquare, Users, Target, Flame, Sparkles, BookOpen, Home, Wallet, CalendarDays, HeartPulse } from 'lucide-react';
 
 const norm = (s) => String(s || '').toLocaleLowerCase('tr');
 
@@ -10,6 +10,7 @@ const PAGES = [
   { id: 'daily', label: 'Günlük Düzen', icon: <Flame size={16} /> },
   { id: 'receivables', label: 'Alacaklar', icon: <Wallet size={16} /> },
   { id: 'calendar', label: 'Takvim', icon: <CalendarDays size={16} /> },
+  { id: 'health', label: 'Sağlık (spor ve beslenme)', icon: <HeartPulse size={16} /> },
   { id: 'journal', label: 'Günlük', icon: <BookOpen size={16} /> }
 ];
 

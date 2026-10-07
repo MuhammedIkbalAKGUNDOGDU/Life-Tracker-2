@@ -12,6 +12,7 @@ import DailyDashboard from './components/DailyDashboard';
 import CalendarDashboard from './components/CalendarDashboard';
 import CommandPalette from './components/CommandPalette';
 import QuickAdd from './components/QuickAdd';
+import HealthDashboard from './components/HealthDashboard';
 import { buildReceivables } from './receivables';
 import { confirmDialog } from './ui';
 import JournalDashboard from './components/JournalDashboard';
@@ -46,10 +47,11 @@ import {
   EyeOff,
   CalendarDays,
   Search,
-  Download
+  Download,
+  HeartPulse
 } from 'lucide-react';
 
-const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar'];
+const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar', 'health'];
 const LEGACY_TABS = { habits: 'daily', routines: 'daily', yearly_payments: 'receivables' };
 const NAV_TABS = [
   { id: 'home', label: 'Ana Sayfa', icon: <Home /> },
@@ -58,6 +60,7 @@ const NAV_TABS = [
   { id: 'daily', label: 'Günlük Düzen', icon: <Flame /> },
   { id: 'receivables', label: 'Alacaklar', icon: <Wallet /> },
   { id: 'calendar', label: 'Takvim', icon: <CalendarDays /> },
+  { id: 'health', label: 'Sağlık', icon: <HeartPulse /> },
   { id: 'journal', label: 'Günlük', icon: <BookOpen /> }
 ];
 const resolveTab = (hash) => {
@@ -1719,6 +1722,8 @@ export default function App({ onLogout }) {
             onSaveEntry={saveJournalEntry}
             onDeleteEntry={deleteJournalEntry}
           />
+        ) : activeTab === 'health' ? (
+          <HealthDashboard />
         ) : activeTab === 'calendar' ? (
           <CalendarDashboard
             receivables={receivables}
