@@ -21,6 +21,7 @@ import {
   Activity, 
   Home,
   LogOut,
+  FileText,
   Wallet,
   FolderKanban, 
   Target, 
