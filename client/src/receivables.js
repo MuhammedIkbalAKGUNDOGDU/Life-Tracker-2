@@ -175,3 +175,36 @@ export const dueColor = (diffDays) => {
   if (diffDays <= 30) return '#eab308';
   return 'var(--success)';
 };
+
+// Payment status of one project, from its priced tasks (what the project card and modal show)
+export function projectPayments(project) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let total = 0;
+  let paid = 0;
+  const open = [];
+  for (const task of project.tasks || []) {
+    const price = parseFloat(task.price) || 0;
+    if (price <= 0) continue;
+    const got = Math.min(parseFloat(task.paid_price) || 0, price);
+    total += price;
+    paid += got;
+    if (price - got > 0) {
+      const date = toLocalDay(task.due_date);
+      open.push({ title: task.title, remaining: price - got, date, diffDays: date ? Math.round((date.getTime() - today.getTime()) / 86400000) : null });
+    }
+  }
+  const dated = open.filter(o => o.date).sort((a, b) => a.date - b.date);
+  const overdue = dated.filter(o => o.diffDays < 0);
+  return {
+    total,
+    paid,
+    remaining: total - paid,
+    hasPricing: total > 0,
+    openCount: open.length,
+    undated: open.filter(o => !o.date).length,
+    overdueCount: overdue.length,
+    overdueAmount: overdue.reduce((a, o) => a + o.remaining, 0),
+    next: dated[0] || null
+  };
+}

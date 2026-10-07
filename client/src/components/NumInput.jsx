@@ -7,11 +7,12 @@ import { useState } from 'react';
 export default function NumInput({ value, onChange, min, max, integer = false, emptyValue, onBlur, ...rest }) {
   const toText = (v) => (v === null || v === undefined || Number.isNaN(v) ? '' : String(v));
   const [text, setText] = useState(toText(value));
-  const [lastValue, setLastValue] = useState(value);
+  const [lastProp, setLastProp] = useState(value);
 
-  // Keep in sync when the parent changes the value from outside (e.g. form reset)
-  if (value !== lastValue) {
-    setLastValue(value);
+  // Keep in sync only when the parent really changes the value from outside (e.g. form reset).
+  // A parent that ignores onChange (uncontrolled use, commit on blur) keeps what was typed.
+  if (value !== lastProp) {
+    setLastProp(value);
     const typed = integer ? parseInt(text, 10) : parseFloat(text);
     if (typed !== value) setText(toText(value));
   }
@@ -32,7 +33,6 @@ export default function NumInput({ value, onChange, min, max, integer = false, e
     setText(t);
     const n = parse(t);
     if (n !== null) {
-      setLastValue(n);
       onChange(n);
     }
   };
@@ -43,13 +43,11 @@ export default function NumInput({ value, onChange, min, max, integer = false, e
     if (n === null) {
       const fallback = emptyValue !== undefined ? emptyValue : (min !== undefined ? clamp(0) : 0);
       setText(emptyValue === '' ? '' : toText(fallback));
-      setLastValue(fallback);
       onChange(fallback);
       return;
     }
     const c = clamp(n);
     setText(String(c));
-    setLastValue(c);
     if (c !== n) onChange(c);
   };
 

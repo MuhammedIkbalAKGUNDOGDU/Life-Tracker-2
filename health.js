@@ -630,6 +630,20 @@ function register(app, pool) {
     const ex = await findOrCreateExercise(pool, req.body.name, req.body.muscle);
     res.status(201).json(ex);
   }));
+  app.put('/api/health/exercises/:id', wrap(async (req, res) => {
+    const name = String(req.body.name || '').trim();
+    if (!name) throw bad('Hareket adı gerekli.');
+    const aliases = (Array.isArray(req.body.aliases) ? req.body.aliases : String(req.body.aliases || '').split(','))
+      .map(a => String(a).trim()).filter(Boolean);
+    try {
+      const { rows } = await pool.query('UPDATE exercises SET name = $1, muscle = $2, aliases = $3 WHERE id = $4 RETURNING *', [name, req.body.muscle || '', aliases, req.params.id]);
+      if (!rows[0]) throw Object.assign(new Error('Hareket bulunamadı.'), { status: 404 });
+      res.json(rows[0]);
+    } catch (err) {
+      if (err.code === '23505') throw Object.assign(new Error('Bu isimde başka bir hareket var.'), { status: 409 });
+      throw err;
+    }
+  }));
   app.delete('/api/health/exercises/:id', wrap(async (req, res) => {
     await pool.query('DELETE FROM exercises WHERE id = $1', [req.params.id]);
     res.json({ ok: true });

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
+import { registerBack } from '../backStack';
 
 // Renders the app-wide confirm dialog triggered by confirmDialog() from ui.js
 export default function DialogHost() {
@@ -38,6 +39,14 @@ export default function DialogHost() {
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialog]);
+
+  // Phone back button = cancel
+  useEffect(() => {
+    if (!dialog) return undefined;
+    const back = registerBack(() => close(false));
+    return () => back.release();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialog]);
 

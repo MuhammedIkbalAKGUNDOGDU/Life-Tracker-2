@@ -52,7 +52,8 @@ module.exports = function registerExtras(app, pool) {
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
       );
       const data = {};
-      for (const { table_name } of tables) {
+      const SECRET_TABLES = new Set(['app_users', 'app_state']); // password hashes, session secret
+      for (const { table_name } of tables.filter(t => !SECRET_TABLES.has(t.table_name))) {
         data[table_name] = (await pool.query(`SELECT * FROM "${table_name}"`)).rows;
       }
       const stamp = new Date().toISOString().slice(0, 10);

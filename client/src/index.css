@@ -3234,3 +3234,114 @@ input[type="date"] { color-scheme: dark; }
 .import-banner { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--primary); background: rgba(99,102,241,.12); color: var(--text-main); font: inherit; text-align: left; cursor: pointer; }
 .import-banner span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .import-banner small { color: var(--text-muted); font-size: 12px; }
+
+/* Toasts keep a dark surface in both themes, so their text must stay light */
+.toast, .toast .toast-message { color: #f1f5f9; }
+.light-theme .toast { background: rgba(30, 41, 59, 0.96); border-color: rgba(255,255,255,.08); }
+.toast-action { color: #a5b4fc; border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.1); }
+
+/* =====================================================
+   UX AUDIT FIXES
+   ===================================================== */
+/* keyboard focus is visible everywhere */
+:focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 2px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+
+/* short desktop windows: sidebar scrolls instead of cutting off the footer */
+@media (min-width: 901px) {
+  .sidebar { overflow-y: auto; scrollbar-width: thin; }
+  .sidebar-top { min-height: 0; }
+}
+@media (min-width: 901px) and (max-height: 820px) {
+  .sidebar { padding: 18px 14px; }
+  .sidebar-nav-btn { padding: 10px 14px; font-size: 14px; }
+  .sidebar-footer { gap: 6px; }
+  .sidebar-footer .theme-toggle-btn { padding: 9px 12px; }
+}
+
+/* "Daha" tab + sheet (phone only) */
+.nav-more { display: none; }
+.more-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 20px 20px 8px; }
+.more-item { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 8px; border-radius: 16px; border: 1px solid var(--glass-border); background: rgba(148,163,184,.08); color: var(--text-main); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.more-item svg { width: 26px; height: 26px; }
+.more-item.on { border-color: var(--primary); background: rgba(99,102,241,.15); }
+.more-actions { display: flex; flex-direction: column; gap: 4px; padding: 8px 20px 20px; }
+.more-actions button, .more-actions a { display: flex; align-items: center; gap: 12px; padding: 14px 12px; border-radius: 12px; border: none; background: transparent; color: var(--text-main); font: inherit; font-size: 15px; text-decoration: none; cursor: pointer; text-align: left; }
+.more-actions button:hover, .more-actions a:hover { background: rgba(148,163,184,.12); }
+
+@media (max-width: 900px) {
+  .nav-secondary { display: none; }
+  .nav-more { display: flex; }
+  .sidebar-nav-btn { flex: 1 1 0; min-width: 0; }
+}
+
+/* phones */
+@media (max-width: 720px) {
+  /* inputs at 16px so iOS does not zoom the page when focusing them */
+  input, select, textarea { font-size: 16px !important; }
+  /* compact two-column stat cards instead of one huge card per line */
+  .stats-section { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  .stat-card { padding: 14px; }
+  .stat-title { font-size: 11px; }
+  .stat-value { font-size: 22px; }
+  .stat-desc { font-size: 11px; }
+  .stat-icon-wrapper { width: 30px; height: 30px; }
+  .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-tile strong { font-size: 20px; }
+  /* modal footers wrap; the keyboard-shortcut hint is useless on touch */
+  .modal-footer { flex-wrap: wrap; gap: 8px; }
+  .modal-hint { display: none; }
+  .modal-footer .btn { flex: 1 1 auto; justify-content: center; }
+  /* calendar header and project filters fit the screen */
+  .cal-nav { flex-wrap: wrap; justify-content: center; width: 100%; gap: 8px; }
+  .cal-nav strong { min-width: 0; flex: 1; }
+  .action-bar-section { flex-wrap: wrap; gap: 10px; }
+  .filters { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .project-search { width: 100%; }
+  .project-search input { width: 100%; }
+}
+
+/* touch devices: comfortable tap targets */
+@media (pointer: coarse) {
+  .btn-card-action, .btn-task-edit, .btn-task-delete, .btn-close, .icon-btn { min-width: 40px; min-height: 40px; }
+  .filter-btn, .rc-chip, .chip-btn { min-height: 40px; }
+  .btn-icon-only { min-width: 38px; min-height: 38px; }
+  .home-link { min-height: 36px; padding: 0 6px; }
+  .home-check { width: 30px; height: 30px; }
+}
+.login-eye { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; display: inline-flex; border-radius: 8px; }
+.login-eye:hover { color: var(--text-main); }
+
+/* ===== Payment status on project cards / modal / alert ===== */
+.pay-status { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.25); font-size: 12.5px; }
+.pay-status.overdue { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); }
+.pay-status.done { background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.25); color: var(--success); }
+.pay-status-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pay-status-line.muted { color: var(--text-muted); }
+.pay-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pay-summary > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: rgba(148,163,184,.08); }
+.pay-summary span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.pay-summary b { font-size: 14px; }
+.pay-alert { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; margin-bottom: 4px; border-radius: 14px; border: 1px solid rgba(239,68,68,.35); background: rgba(239,68,68,.1); color: var(--text-main); font: inherit; text-align: left; cursor: pointer; }
+.pay-alert svg { color: #ef4444; flex-shrink: 0; }
+.pay-alert span { display: flex; flex-direction: column; gap: 2px; }
+.pay-alert small { color: var(--text-muted); font-size: 12px; }
+.pay-alert.on { background: rgba(239,68,68,.2); border-color: #ef4444; }
+@media (max-width: 720px) { .pay-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* rest timer + exercise management */
+.rest-setting { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--text-muted); }
+.chip.small { padding: 6px 12px; font-size: 13px; }
+.rest-timer { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 95; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 999px; background: rgba(30,41,59,.96); color: #f1f5f9; box-shadow: 0 10px 30px rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); }
+.rest-timer b { font-size: 18px; font-variant-numeric: tabular-nums; min-width: 52px; text-align: center; }
+.rest-timer button { padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #f1f5f9; font: inherit; font-size: 13px; cursor: pointer; }
+.rest-timer.done { background: #059669; }
+@media (max-width: 900px) { .rest-timer { bottom: 88px; max-width: calc(100vw - 24px); } }
+.icon-btn.active { background: rgba(99,102,241,.2); color: var(--primary-hover); }
+.manage-row { align-items: flex-start; }
+.manage-btns { display: flex; flex-direction: row !important; gap: 2px; flex-shrink: 0; }
+.manage-form { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 6px; }
+.manage-form input, .manage-form select { padding: 10px 12px; }
+.manage-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.login-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; text-align: left; }

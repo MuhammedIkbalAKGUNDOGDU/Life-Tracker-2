@@ -19,6 +19,7 @@ import {
 import YearlyPaymentsDashboard from './YearlyPaymentsDashboard';
 import { notify } from '../ui';
 import { MONTH_NAMES, dueLabel, dueColor } from '../receivables';
+import { localDateStr } from '../dates';
 import { printClientStatement, downloadCsv } from '../print';
 
 const SOURCE_META = {
@@ -73,7 +74,7 @@ export default function ReceivablesDashboard({
       l.date ? l.date.toLocaleDateString('tr-TR') : '',
       l.total.toFixed(2), l.paid.toFixed(2), l.remaining.toFixed(2)
     ]));
-    downloadCsv(`alacaklar-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    downloadCsv(`alacaklar-${localDateStr()}.csv`, rows);
   };
 
   const printStatement = (e, client) => {

@@ -19,13 +19,15 @@ window.fetch = async (...args) => {
 function AuthGate() {
   const [state, setState] = useState('checking'); // checking | login | app
   const [authDisabled, setAuthDisabled] = useState(false);
+  const [username, setUsername] = useState('');
 
   const check = async () => {
     try {
       const res = await fetch('/api/auth/status');
       const data = await res.json();
       setAuthDisabled(!!data.authDisabled);
-      setState(data.authenticated ? 'app' : 'login');
+      setUsername(data.username || '');
+      setState(data.authenticated ? 'app' : data.setupRequired ? 'setup' : 'login');
     } catch {
       setState('login');
     }
@@ -39,8 +41,8 @@ function AuthGate() {
   }, []);
 
   if (state === 'checking') return null;
-  if (state === 'login') return <Login onSuccess={() => setState('app')} />;
-  return <App onLogout={authDisabled ? undefined : async () => {
+  if (state === 'login' || state === 'setup') return <Login mode={state} onSuccess={check} />;
+  return <App username={username} onLogout={authDisabled ? undefined : async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setState('login');
   }} />;

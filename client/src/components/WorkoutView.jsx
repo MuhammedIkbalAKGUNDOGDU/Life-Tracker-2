@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Minus, Trash2, Copy, Dumbbell, Flame, X, Search, Trophy,
-  TrendingUp, Scale, RotateCcw, Sparkles, History
+  TrendingUp, Scale, RotateCcw, Sparkles, History, Pencil, Timer
 } from 'lucide-react';
 import NumInput from './NumInput';
 import ModalShell from './ModalShell';
@@ -167,10 +167,12 @@ function ExerciseBlock({ ex, info, onAddSet, onUpdateSet, onDeleteSet, onRemove 
   );
 }
 
-function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onClose, usedIds }) {
+function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onClose, onChanged, usedIds }) {
   const [q, setQ] = useState('');
   const [muscle, setMuscle] = useState('');
   const [open, setOpen] = useState(null); // exercise id whose last sessions are expanded
+  const [manage, setManage] = useState(false); // edit / delete exercises
+  const [editing, setEditing] = useState(null); // { id, name, muscle, aliases }
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -182,6 +184,28 @@ function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onC
     return norm(q).split(/\s+/).every(w => hay.includes(w));
   });
   const exact = exercises.some(e => norm(e.name) === norm(q.trim()));
+
+  const saveEdit = async () => {
+    try {
+      await api('PUT', `/api/health/exercises/${editing.id}`, { name: editing.name, muscle: editing.muscle, aliases: editing.aliases });
+      setEditing(null);
+      notify('Hareket güncellendi.', 'success');
+      onChanged();
+    } catch { /* toast shown */ }
+  };
+  const removeExercise = async (e) => {
+    const ok = await confirmDialog({
+      title: 'Hareket silinsin mi?',
+      message: e.uses ? `"${e.name}" hareketi ve ${e.uses} antrenmandaki tüm setleri silinecek.` : `"${e.name}" hareketi listeden kaldırılacak.`,
+      confirmText: 'Sil',
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      await api('DELETE', `/api/health/exercises/${e.id}`);
+      onChanged();
+    } catch { /* toast shown */ }
+  };
   // Smart order: while typing, names that start with the text first; otherwise the
   // exercises of the earlier same-named workout, then most recently used.
   const nq = norm(q.trim());
@@ -194,7 +218,8 @@ function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onC
   return (
     <ModalShell onClose={onClose} className="sheet" style={{ maxWidth: '520px' }}>
       <div className="modal-header">
-        <h2>Hareket ekle</h2>
+        <h2>{manage ? 'Hareketleri yönet' : 'Hareket ekle'}</h2>
+        <button type="button" className={`icon-btn ${manage ? 'active' : ''}`} onClick={() => { setManage(m => !m); setEditing(null); }} aria-label="Hareketleri düzenle" title="Hareketleri yeniden adlandır / sil"><Pencil size={18} /></button>
         <button className="btn-close" data-modal-close type="button"><X /></button>
       </div>
       <div className="picker">
@@ -204,7 +229,33 @@ function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onC
           {MUSCLES.map(m => <button type="button" key={m} className={`chip ${muscle === m ? 'on' : ''}`} onClick={() => setMuscle(m)}>{m}</button>)}
         </div>
         <div className="picker-list">
-          {list.map(e => {
+          {manage && list.map(e => (
+            <div key={e.id} className="picker-item manage-row">
+              {editing?.id === e.id ? (
+                <form className="manage-form" onSubmit={async (ev) => { ev.preventDefault(); await saveEdit(); }}>
+                  <input value={editing.name} onChange={(ev) => setEditing({ ...editing, name: ev.target.value })} placeholder="Hareket adı" autoFocus />
+                  <select value={editing.muscle} onChange={(ev) => setEditing({ ...editing, muscle: ev.target.value })}>
+                    <option value="">Kas grubu yok</option>
+                    {MUSCLES.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <input value={editing.aliases} onChange={(ev) => setEditing({ ...editing, aliases: ev.target.value })} placeholder="Takma adlar (virgülle: bench, benç)" />
+                  <div className="manage-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)}>Vazgeç</button>
+                    <button type="submit" className="btn btn-primary">Kaydet</button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <span><b>{e.name}</b><small>{e.muscle || 'Kas grubu yok'}{e.uses ? ` · ${e.uses} antrenmanda` : ''}{(e.aliases || []).length ? ` · ${e.aliases.join(', ')}` : ''}</small></span>
+                  <span className="manage-btns">
+                    <button type="button" className="icon-btn" onClick={() => setEditing({ id: e.id, name: e.name, muscle: e.muscle || '', aliases: (e.aliases || []).join(', ') })} aria-label={`${e.name} düzenle`}><Pencil size={16} /></button>
+                    <button type="button" className="icon-btn" onClick={() => removeExercise(e)} aria-label={`${e.name} sil`}><Trash2 size={16} /></button>
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+          {!manage && list.map(e => {
             const sessions = recent[e.id] || [];
             const used = usedIds.includes(e.id);
             const expanded = open === e.id;
@@ -231,7 +282,7 @@ function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onC
               </div>
             );
           })}
-          {q.trim() && !exact && (
+          {!manage && q.trim() && !exact && (
             <button type="button" className="picker-item create" onClick={() => onCreate(q.trim(), muscle)}>
               <span><b>“{q.trim()}” hareketini oluştur</b><small>{muscle || 'Kas grubu seçmek için yukarıdan filtre seç'}</small></span>
               <Plus size={18} />
@@ -241,6 +292,48 @@ function ExercisePicker({ exercises, recent, suggestedIds, onPick, onCreate, onC
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+// ---------- rest timer ----------
+
+const REST_CHOICES = [60, 90, 120, 180];
+
+function RestTimer({ endAt, onSkip, onAdd }) {
+  const [now, setNow] = useState(Date.now());
+  const done = useRef(false);
+
+  useEffect(() => {
+    done.current = false;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [endAt]);
+
+  const left = Math.max(0, Math.ceil((endAt - now) / 1000));
+  useEffect(() => {
+    if (left === 0 && !done.current) {
+      done.current = true;
+      try { navigator.vibrate?.([250, 120, 250]); } catch { /* not supported */ }
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 880; g.gain.value = 0.08;
+        o.start(); o.stop(ctx.currentTime + 0.35);
+      } catch { /* audio blocked */ }
+    }
+  }, [left]);
+
+  const mm = String(Math.floor(left / 60)).padStart(1, '0');
+  const ss = String(left % 60).padStart(2, '0');
+  return (
+    <div className={`rest-timer ${left === 0 ? 'done' : ''}`} role="timer" aria-live="off">
+      <Timer size={18} />
+      <b>{left === 0 ? 'Dinlenme bitti, sıradaki set!' : `${mm}:${ss}`}</b>
+      {left > 0 && <button type="button" onClick={() => onAdd(15)}>+15 sn</button>}
+      <button type="button" onClick={onSkip}>{left === 0 ? 'Tamam' : 'Atla'}</button>
+    </div>
   );
 }
 
@@ -398,6 +491,15 @@ export default function WorkoutView() {
   const [pickerFor, setPickerFor] = useState(null);
   const [detail, setDetail] = useState(null);
   const [recentSessions, setRecentSessions] = useState({});
+  const [restEndAt, setRestEndAt] = useState(0);
+  const [restSeconds, setRestSeconds] = useState(() => {
+    try { const v = parseInt(localStorage.getItem('rest_seconds'), 10); return Number.isFinite(v) ? v : 90; } catch { return 90; }
+  }); // 0 = timer off
+  const chooseRest = (v) => {
+    setRestSeconds(v);
+    try { localStorage.setItem('rest_seconds', String(v)); } catch { /* private mode */ }
+    if (v === 0) setRestEndAt(0);
+  };
   const [loading, setLoading] = useState(true);
 
   const formatSets = useMemo(() => (sets) => {
@@ -460,6 +562,17 @@ export default function WorkoutView() {
     replaceWorkout(w);
     if (!prev) setPickerFor(w.id);
   };
+  // Closing the picker on a brand-new, unnamed, empty workout removes it (no leftover empty cards)
+  const closePicker = async () => {
+    const w = workouts.find(x => x.id === pickerFor);
+    setPickerFor(null);
+    if (w && w.exercises.length === 0 && !w.title) {
+      try {
+        await api('DELETE', `/api/health/workouts/${w.id}`);
+        setWorkouts(prev => prev.filter(x => x.id !== w.id));
+      } catch { /* leave it */ }
+    }
+  };
   const importFrom = async (w, prev) => {
     replaceWorkout(await api('POST', `/api/health/workouts/${w.id}/import`, { from_id: prev.id }));
     notify(`${prev.exercises.length} hareket getirildi.`, 'success');
@@ -497,6 +610,7 @@ export default function WorkoutView() {
   const addSet = async (ex, set, quiet = false) => {
     const w = await api('POST', `/api/health/workout-exercises/${ex.id}/sets`, set);
     replaceWorkout(w);
+    if (!quiet && !set.is_warmup && restSeconds > 0) setRestEndAt(Date.now() + restSeconds * 1000);
     const info = infos[ex.exercise_id];
     if (!quiet && !set.is_warmup && info && info.pr > 0 && epley(set.weight, set.reps) > info.pr + 0.05) {
       notify(`🎉 ${ex.name}: yeni rekor! (tahmini 1RM ${fmtNum(epley(set.weight, set.reps))} kg)`, 'success');
@@ -547,6 +661,12 @@ export default function WorkoutView() {
         </div>
         <button type="button" className="icon-btn" onClick={() => setDate(addDays(date, 1))} aria-label="Sonraki gün"><ChevronRight /></button>
         {date !== todayStr() && <button type="button" className="chip-btn" onClick={() => setDate(todayStr())}><RotateCcw size={13} /> Bugün</button>}
+      </div>
+
+      <div className="rest-setting">
+        <Timer size={15} /> <span>Set arası dinlenme:</span>
+        {REST_CHOICES.map(v => <button type="button" key={v} className={`chip small ${restSeconds === v ? 'on' : ''}`} onClick={() => chooseRest(v)}>{v >= 120 ? `${v / 60} dk` : `${v} sn`}</button>)}
+        <button type="button" className={`chip small ${restSeconds === 0 ? 'on' : ''}`} onClick={() => chooseRest(0)}>Kapalı</button>
       </div>
 
       <div className="week-strip">
@@ -656,6 +776,10 @@ export default function WorkoutView() {
         {titleSuggestions.map(t => <option key={t} value={t} />)}
       </datalist>
 
+      {restEndAt > 0 && (
+        <RestTimer endAt={restEndAt} onSkip={() => setRestEndAt(0)} onAdd={(sec) => setRestEndAt(t => t + sec * 1000)} />
+      )}
+
       {detail && (
         <WorkoutDetailModal
           workout={detail}
@@ -671,7 +795,8 @@ export default function WorkoutView() {
           recent={recentSessions}
           suggestedIds={(sameTitle(workouts.find(w => w.id === pickerFor)?.title)?.exercises || []).map(e => e.exercise_id)}
           usedIds={(workouts.find(w => w.id === pickerFor)?.exercises || []).map(e => e.exercise_id)}
-          onClose={() => setPickerFor(null)}
+          onClose={closePicker}
+          onChanged={() => { api('GET', '/api/health/exercises').then(setExercises).catch(() => {}); loadAll(); }}
           onPick={(e) => addExercise(pickerFor, { exercise_id: e.id })}
           onCreate={(name, muscle) => addExercise(pickerFor, { name, muscle })}
         />

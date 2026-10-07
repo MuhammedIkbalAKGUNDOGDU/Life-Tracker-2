@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { localDateStr, dayString } from './dates';
 import KPIStats from './components/KPIStats';
 import ProjectCard from './components/ProjectCard';
 import ProjectModal from './components/ProjectModal';
@@ -13,11 +14,11 @@ import CalendarDashboard from './components/CalendarDashboard';
 import CommandPalette from './components/CommandPalette';
 import QuickAdd from './components/QuickAdd';
 import HealthDashboard from './components/HealthDashboard';
-import { buildReceivables } from './receivables';
+import ModalShell from './components/ModalShell';
+import AccountModal from './components/AccountModal';
+import { buildReceivables, projectPayments } from './receivables';
 import { confirmDialog } from './ui';
 import JournalDashboard from './components/JournalDashboard';
-import PendingPayments from './components/PendingPayments';
-import UpcomingInstallments from './components/UpcomingInstallments';
 import { 
   Activity, 
   Home,
@@ -48,7 +49,9 @@ import {
   CalendarDays,
   Search,
   Download,
-  HeartPulse
+  HeartPulse,
+  MoreHorizontal,
+  User
 } from 'lucide-react';
 
 const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar', 'health'];
@@ -56,29 +59,36 @@ const LEGACY_TABS = { habits: 'daily', routines: 'daily', yearly_payments: 'rece
 const NAV_TABS = [
   { id: 'home', label: 'Ana Sayfa', icon: <Home /> },
   { id: 'projects', label: 'Projeler', icon: <FolderKanban /> },
-  { id: 'goals', label: 'Hedefler', icon: <Target /> },
-  { id: 'daily', label: 'Günlük Düzen', icon: <Flame /> },
+  { secondary: true, id: 'goals', label: 'Hedefler', icon: <Target /> },
+  { secondary: true, id: 'daily', label: 'Günlük Düzen', icon: <Flame /> },
   { id: 'receivables', label: 'Alacaklar', icon: <Wallet /> },
-  { id: 'calendar', label: 'Takvim', icon: <CalendarDays /> },
+  { secondary: true, id: 'calendar', label: 'Takvim', icon: <CalendarDays /> },
   { id: 'health', label: 'Sağlık', icon: <HeartPulse /> },
-  { id: 'journal', label: 'Günlük', icon: <BookOpen /> }
+  { secondary: true, id: 'journal', label: 'Günlük', icon: <BookOpen /> }
 ];
 const resolveTab = (hash) => {
   const id = LEGACY_TABS[hash] || hash;
   return VALID_TABS.includes(id) ? id : 'home';
 };
 
-export default function App({ onLogout }) {
+export default function App({ onLogout, username }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [currentFilter, setCurrentFilter] = useState('all');
   const [selectedClient, setSelectedClient] = useState('all');
   const [projectSearch, setProjectSearch] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('all'); // all | overdue
   
   // Theme & Navigation Sidebar State
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [activeTab, setActiveTab] = useState(() => resolveTab(window.location.hash.slice(1)));
+
+  // Tab title shows the current page (browser history, window switcher)
+  useEffect(() => {
+    const tab = NAV_TABS.find(t => t.id === activeTab);
+    document.title = `${tab ? tab.label : 'Ana Sayfa'} · Softium Planner`;
+  }, [activeTab]);
 
   // Sync activeTab state changes to URL hash
   useEffect(() => {
@@ -139,6 +149,8 @@ export default function App({ onLogout }) {
   const [templates, setTemplates] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false); // phone: "Daha" sheet
 
   // Yearly payments (shared by Home & Alacaklar)
   const [yearlyPayments, setYearlyPayments] = useState([]);
@@ -213,7 +225,7 @@ export default function App({ onLogout }) {
 
   // Toasts requested from outside App (e.g. modals) via ui.notify()
   useEffect(() => {
-    const onToast = (e) => showToast(e.detail.message, e.detail.type);
+    const onToast = (e) => showToast(e.detail.message, e.detail.type, e.detail.action || null);
     window.addEventListener('ui-toast', onToast);
     return () => window.removeEventListener('ui-toast', onToast);
   }, []);
@@ -330,7 +342,7 @@ export default function App({ onLogout }) {
       return;
     }
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = localDateStr();
       const payload = {
         project_id: project.id,
         title: project.title,
@@ -931,7 +943,25 @@ export default function App({ onLogout }) {
         if (!res.ok) throw new Error('Alışkanlık silinemedi.');
         
         setHabits(prev => prev.filter(h => h.id !== habitId));
-        showToast('Alışkanlık başarıyla silindi.', 'info');
+        showToast('Alışkanlık silindi.', 'info', {
+          label: 'Geri al',
+          onClick: async () => {
+            try {
+              const created = await sendJson('/api/habits', 'POST', {
+                title: habit.title, description: habit.description, category: habit.category, frequency: habit.frequency,
+                custom_days: habit.custom_days, target_count: habit.target_count, weekly_targets: habit.weekly_targets
+              }).then(r => r.json());
+              // bring back the recent history we still have (last 35 days)
+              for (const l of habit.logs || []) {
+                await sendJson(`/api/habits/${created.id}/log`, 'POST', { log_date: l.log_date, count: l.count });
+              }
+              await fetchHabits();
+              showToast('Alışkanlık geri alındı.', 'success');
+            } catch {
+              showToast('Alışkanlık geri alınamadı.', 'error');
+            }
+          }
+        });
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1040,15 +1070,21 @@ export default function App({ onLogout }) {
 
   const saveRoutine = async (routineData) => {
     try {
-      const res = await fetch('/api/routines', {
-        method: 'POST',
+      const editing = !!routineData.id;
+      const res = await fetch(editing ? `/api/routines/${routineData.id}` : '/api/routines', {
+        method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(routineData)
       });
       if (!res.ok) throw new Error('Rutin kaydedilirken hata oluştu.');
-      const data = await res.json();
-      setRoutines(prev => [data, ...prev]);
-      showToast('Yeni rutin başarıyla eklendi.', 'success');
+      if (editing) {
+        await fetchRoutines();
+        showToast('Rutin güncellendi.', 'success');
+      } else {
+        const data = await res.json();
+        setRoutines(prev => [data, ...prev]);
+        showToast('Yeni rutin başarıyla eklendi.', 'success');
+      }
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -1154,6 +1190,7 @@ export default function App({ onLogout }) {
   };
 
   const deleteRoutine = async (id) => {
+    const snapshot = routines.find(r => r.id === id);
     if (await confirmDialog({ title: 'Rutin silinsin mi?', message: 'Rutin ve adımları kalıcı olarak silinecek.', confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/routines/${id}`, {
@@ -1161,7 +1198,17 @@ export default function App({ onLogout }) {
         });
         if (!res.ok) throw new Error('Rutin silinemedi.');
         setRoutines(prev => prev.filter(r => r.id !== id));
-        showToast('Rutin başarıyla silindi.', 'info');
+        showToast('Rutin silindi.', 'info', snapshot ? {
+          label: 'Geri al',
+          onClick: async () => {
+            const r = await sendJson('/api/routines', 'POST', {
+              title: snapshot.title, description: snapshot.description, icon: snapshot.icon,
+              steps: (snapshot.steps || []).map(st => ({ title: st.title }))
+            });
+            if (r.ok) { await fetchRoutines(); showToast('Rutin geri alındı.', 'success'); }
+            else showToast('Rutin geri alınamadı.', 'error');
+          }
+        } : null);
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1196,9 +1243,9 @@ export default function App({ onLogout }) {
       const data = await res.json();
       
       setJournalEntries(prev => {
-        const exists = prev.some(e => e.entry_date.split('T')[0] === data.entry_date.split('T')[0]);
+        const exists = prev.some(e => dayString(e.entry_date) === dayString(data.entry_date));
         if (exists) {
-          return prev.map(e => e.entry_date.split('T')[0] === data.entry_date.split('T')[0] ? data : e);
+          return prev.map(e => dayString(e.entry_date) === dayString(data.entry_date) ? data : e);
         } else {
           return [data, ...prev];
         }
@@ -1229,6 +1276,7 @@ export default function App({ onLogout }) {
   };
 
   const deleteJournalEntry = async (id) => {
+    const snapshot = journalEntries.find(e => e.id === id);
     if (await confirmDialog({ title: 'Günlük kaydı silinsin mi?', message: 'Bu günün kaydı kalıcı olarak silinecek.', confirmText: 'Sil', danger: true })) {
       try {
         const res = await fetch(`/api/journal/${id}`, {
@@ -1236,7 +1284,17 @@ export default function App({ onLogout }) {
         });
         if (!res.ok) throw new Error('Günlük kaydı silinemedi.');
         setJournalEntries(prev => prev.filter(e => e.id !== id));
-        showToast('Günlük kaydı silindi.', 'info');
+        showToast('Günlük kaydı silindi.', 'info', snapshot ? {
+          label: 'Geri al',
+          onClick: async () => {
+            await saveJournalEntry({
+              entry_date: dayString(snapshot.entry_date),
+              mood_rating: snapshot.mood_rating ?? undefined,
+              content: snapshot.content,
+              tags: snapshot.tags
+            });
+          }
+        } : null);
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1276,8 +1334,12 @@ export default function App({ onLogout }) {
   // Compute unique clients list
   const uniqueClients = [...new Set(projects.map(p => p.client).filter(c => c && c.trim() !== ''))];
 
+  // Projects that have at least one overdue payment
+  const overdueProjects = projects.filter(p => p.type === 'external' && projectPayments(p).overdueCount > 0);
+
   // Filtering projects list by status AND client
   const filteredProjects = projects
+    .filter(p => paymentFilter === 'all' || overdueProjects.includes(p))
     .filter(p => currentFilter === 'all' || p.status === currentFilter)
     .filter(p => selectedClient === 'all' || p.client === selectedClient)
     .filter(p => {
@@ -1309,7 +1371,7 @@ export default function App({ onLogout }) {
             {NAV_TABS.map((tab) => (
               <button
                 key={tab.id}
-                className={`sidebar-nav-btn ${activeTab === tab.id ? 'active' : ''}`}
+                className={`sidebar-nav-btn ${activeTab === tab.id ? 'active' : ''} ${tab.secondary ? 'nav-secondary' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 {tab.icon}
@@ -1319,6 +1381,14 @@ export default function App({ onLogout }) {
                 )}
               </button>
             ))}
+            <button
+              className={`sidebar-nav-btn nav-more ${NAV_TABS.some(t => t.secondary && t.id === activeTab) ? 'active' : ''}`}
+              onClick={() => setMoreOpen(true)}
+              aria-label="Daha fazla"
+            >
+              <MoreHorizontal />
+              Daha
+            </button>
           </nav>
         </div>
 
@@ -1348,6 +1418,12 @@ export default function App({ onLogout }) {
           </button>
 
           {onLogout && (
+            <button className="theme-toggle-btn" onClick={() => setAccountOpen(true)}>
+              <User size={18} />
+              Hesap{username ? ` (${username})` : ''}
+            </button>
+          )}
+          {onLogout && (
             <button className="theme-toggle-btn" onClick={onLogout}>
               <LogOut size={18} />
               Çıkış Yap
@@ -1371,23 +1447,20 @@ export default function App({ onLogout }) {
             {/* Dashboard Stat Cards */}
             <KPIStats projects={projects} />
 
-            {/* Yaklaşan Taksitler Panel */}
-            <UpcomingInstallments
-              projects={projects}
-              onOpenProject={handleOpenProjectById}
-              displayCurrency={displayCurrency}
-              hideAmounts={hideAmounts}
-              usdTryRate={usdTryRate}
-            />
-
-            {/* Kalan Ödemeler (Pending Payments) Panel */}
-            <PendingPayments
-              projects={projects}
-              onOpenProject={handleOpenProjectById}
-              displayCurrency={displayCurrency}
-              hideAmounts={hideAmounts}
-              usdTryRate={usdTryRate}
-            />
+            {/* Payment alert: projects with overdue payments (click to filter) */}
+            {overdueProjects.length > 0 && (
+              <button
+                type="button"
+                className={`pay-alert ${paymentFilter === 'overdue' ? 'on' : ''}`}
+                onClick={() => setPaymentFilter(f => (f === 'overdue' ? 'all' : 'overdue'))}
+              >
+                <AlertTriangle size={18} />
+                <span>
+                  <b>{overdueProjects.length} projede geciken ödeme var</b>
+                  <small>{paymentFilter === 'overdue' ? 'Sadece onlar gösteriliyor. Tümünü görmek için tekrar dokun.' : 'Dokununca sadece o projeleri göster.'}</small>
+                </span>
+              </button>
+            )}
 
             {/* Action Bar (Filters & Adding Button) */}
             <section className="action-bar-section">
@@ -1546,11 +1619,11 @@ export default function App({ onLogout }) {
                   <FolderOpen style={{ width: '56px', height: '56px' }} />
                   <h3>Proje Bulunamadı</h3>
                   <p>
-                    {currentFilter === 'all' && selectedClient === 'all' && !projectSearch
+                    {currentFilter === 'all' && selectedClient === 'all' && !projectSearch && paymentFilter === 'all'
                       ? 'Henüz hiçbir proje oluşturmadınız.' 
                       : 'Bu filtrelere uygun bir proje bulunamadı.'}
                   </p>
-                  {currentFilter === 'all' && selectedClient === 'all' && (
+                  {currentFilter === 'all' && selectedClient === 'all' && paymentFilter === 'all' && !projectSearch && (
                     <button className="btn btn-primary" onClick={handleCreateClick}>
                       <Plus /> İlk Projeyi Ekle
                     </button>
@@ -1829,6 +1902,32 @@ export default function App({ onLogout }) {
         onOpenHabit={handleEditHabitClick}
       />
 
+      {accountOpen && <AccountModal username={username} onClose={() => setAccountOpen(false)} />}
+
+      {moreOpen && (
+        <ModalShell onClose={() => setMoreOpen(false)} className="sheet more-sheet" style={{ maxWidth: '480px' }}>
+          <div className="more-grid">
+            {NAV_TABS.filter(t => t.secondary).map(t => (
+              <button
+                key={t.id}
+                className={`more-item ${activeTab === t.id ? 'on' : ''}`}
+                onClick={() => { setActiveTab(t.id); setMoreOpen(false); }}
+              >
+                {t.icon}
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="more-actions">
+            <button onClick={() => { setMoreOpen(false); setPaletteOpen(true); }}><Search size={18} /> Ara</button>
+            <a href="/api/backup" download><Download size={18} /> Yedek indir</a>
+            <button onClick={toggleTheme}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? 'Açık tema' : 'Koyu tema'}</button>
+            {onLogout && <button onClick={() => { setMoreOpen(false); setAccountOpen(true); }}><User size={18} /> Hesap / şifre değiştir</button>}
+            {onLogout && <button onClick={onLogout}><LogOut size={18} /> Çıkış yap</button>}
+          </div>
+        </ModalShell>
+      )}
+
       <QuickAdd
         projects={projects}
         hidden={isModalOpen || isGoalModalOpen || isHabitModalOpen}
@@ -1840,7 +1939,7 @@ export default function App({ onLogout }) {
       />
 
       {/* Toast Notifications */}
-      <div className="toast-container">
+      <div className="toast-container" role="status" aria-live="polite">
         {toasts.map(t => (
           <div key={t.id} className={`toast toast-${t.type}`}>
             <div className="toast-icon">

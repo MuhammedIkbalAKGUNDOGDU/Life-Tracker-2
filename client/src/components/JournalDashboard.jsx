@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { localDateStr, dayString } from '../dates';
 import ModalShell from './ModalShell';
 import { notify } from '../ui';
 import { BookOpen, Trash2, Calendar, Smile, Heart, Check, X, Plus } from 'lucide-react';
@@ -438,8 +439,8 @@ export default function JournalDashboard({
 
   // Check if today already has an entry to populate form
   useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayEntry = entries.find(e => e.entry_date.split('T')[0] === todayStr);
+    const todayStr = localDateStr();
+    const todayEntry = entries.find(e => dayString(e.entry_date) === todayStr);
     
     if (todayEntry) {
       setMoodRating(todayEntry.mood_rating);
@@ -479,7 +480,7 @@ export default function JournalDashboard({
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateStr();
     onSaveEntry({
       entry_date: todayStr,
       mood_rating: moodRating,
@@ -509,8 +510,8 @@ export default function JournalDashboard({
   };
 
   // KPI Calculations
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayEntry = entries.find(e => e.entry_date.split('T')[0] === todayStr);
+  const todayStr = localDateStr();
+  const todayEntry = entries.find(e => dayString(e.entry_date) === todayStr);
   const todayMoodRating = todayEntry ? todayEntry.mood_rating : null;
 
   const getAverageMood = (daysLimit) => {

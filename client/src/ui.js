@@ -14,8 +14,9 @@ export const confirmDialog = ({
     }));
   });
 
-export const notify = (message, type = 'info') => {
-  window.dispatchEvent(new CustomEvent('ui-toast', { detail: { message, type } }));
+// action = { label, onClick } shows a button in the toast (e.g. "Geri al")
+export const notify = (message, type = 'info', action = null) => {
+  window.dispatchEvent(new CustomEvent('ui-toast', { detail: { message, type, action } }));
 };
 
 // Text prompt in the app's own dialog. Resolves to the entered text, or null if cancelled.

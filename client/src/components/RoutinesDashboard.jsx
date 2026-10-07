@@ -13,7 +13,8 @@ import {
   X,
   PlusCircle,
   Play,
-  RotateCcw
+  RotateCcw,
+  Pencil
 } from 'lucide-react';
 
 export default function RoutinesDashboard({
@@ -29,6 +30,8 @@ export default function RoutinesDashboard({
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('sun');
   const [steps, setSteps] = useState(['', '']); // Initial 2 empty steps
+  const [stepIds, setStepIds] = useState([null, null]); // server ids, so edits keep today's checkmarks
+  const [editingId, setEditingId] = useState(null);
 
   const handleStepChange = (index, val) => {
     setSteps(prev => {
@@ -40,19 +43,46 @@ export default function RoutinesDashboard({
 
   const addStepInput = () => {
     setSteps(prev => [...prev, '']);
+    setStepIds(prev => [...prev, null]);
   };
 
   const removeStepInput = (index) => {
     setSteps(prev => prev.filter((_, idx) => idx !== index));
+    setStepIds(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const openCreate = () => {
+    setEditingId(null);
+    setTitle('');
+    setDescription('');
+    setIcon('sun');
+    setSteps(['', '']);
+    setStepIds([null, null]);
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (routine) => {
+    setEditingId(routine.id);
+    setTitle(routine.title || '');
+    setDescription(routine.description || '');
+    setIcon(routine.icon || 'sun');
+    const list = routine.steps || [];
+    const padded = list.length >= 2 ? list : [...list, ...Array(2 - list.length).fill(null)];
+    setSteps(padded.map(st => (st ? st.title : '')));
+    setStepIds(padded.map(st => (st ? st.id : null)));
+    setIsModalOpen(true);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const filteredSteps = steps.filter(s => s.trim() !== '');
+    const filteredSteps = steps
+      .map((text, i) => ({ id: stepIds[i], title: text.trim() }))
+      .filter(st => st.title !== '');
 
     onSaveRoutine({
+      id: editingId,
       title: title.trim(),
       description: description.trim(),
       icon,
@@ -60,10 +90,7 @@ export default function RoutinesDashboard({
     });
 
     setIsModalOpen(false);
-    setTitle('');
-    setDescription('');
-    setIcon('sun');
-    setSteps(['', '']);
+    setEditingId(null);
   };
 
   const getRoutineProgress = (routine) => {
@@ -101,7 +128,7 @@ export default function RoutinesDashboard({
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Günlük Akışlar & Rutinler</h2>
         </div>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
+        <button className="btn btn-primary" onClick={openCreate}>
           <Plus /> Yeni Rutin Oluştur
         </button>
       </section>
@@ -138,14 +165,26 @@ export default function RoutinesDashboard({
                           {renderIcon(routine.icon)}
                         </div>
                         
-                        <button 
-                          className="btn-card-action delete" 
-                          onClick={() => onDeleteRoutine(routine.id)}
-                          title="Rutini Sil"
-                          style={{ padding: '4px' }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            className="btn-card-action"
+                            onClick={() => openEdit(routine)}
+                            title="Rutini Düzenle"
+                            aria-label="Rutini Düzenle"
+                            style={{ padding: '4px' }}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button 
+                            className="btn-card-action delete" 
+                            onClick={() => onDeleteRoutine(routine.id)}
+                            title="Rutini Sil"
+                            aria-label="Rutini Sil"
+                            style={{ padding: '4px' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
 
                       <h3 className="project-card-title" style={{ fontSize: '17px', marginBottom: '4px' }}>
@@ -201,6 +240,15 @@ export default function RoutinesDashboard({
                             <RotateCcw size={16} />
                           </button>
                         )}
+                        <button
+                          className="btn-card-action"
+                          onClick={() => openEdit(routine)}
+                          title="Rutini Düzenle"
+                          aria-label="Rutini Düzenle"
+                          style={{ padding: '4px' }}
+                        >
+                          <Pencil size={16} />
+                        </button>
                         <button 
                           className="btn-card-action delete" 
                           onClick={() => onDeleteRoutine(routine.id)}
@@ -299,7 +347,7 @@ export default function RoutinesDashboard({
       {isModalOpen && (
         <ModalShell onClose={() => setIsModalOpen(false)} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h2>Yeni Rutin Oluştur</h2>
+              <h2>{editingId ? 'Rutini Düzenle' : 'Yeni Rutin Oluştur'}</h2>
               <button className="btn-close" data-modal-close type="button">
                 <X />
               </button>

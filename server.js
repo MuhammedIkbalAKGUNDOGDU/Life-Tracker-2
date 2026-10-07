@@ -1,11 +1,24 @@
 require('dotenv').config();
 const express = require('express');
 const { createAuth } = require('./auth');
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+// Return DATE columns as plain 'YYYY-MM-DD' strings. As JS Dates they were serialized in UTC,
+// which shifted every date one day back for servers/users ahead of UTC (e.g. Turkey).
+types.setTypeParser(1082, (v) => v);
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.disable('x-powered-by');
+// Basic hardening headers (nginx can add HSTS on top)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
 
 // Behind nginx: trust X-Forwarded-* so req.ip / req.secure are correct
 app.set('trust proxy', 1);
@@ -13,26 +26,6 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client', 'dist')));
-
-// Authentication (single password). Disabled only in local dev when APP_PASSWORD is unset.
-const APP_PASSWORD = process.env.APP_PASSWORD;
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!APP_PASSWORD || !SESSION_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('❌ APP_PASSWORD and SESSION_SECRET must be set in production.');
-    process.exit(1);
-  }
-  console.warn('⚠️  APP_PASSWORD / SESSION_SECRET not set: authentication is DISABLED (dev mode).');
-} else {
-  const auth = createAuth({ password: APP_PASSWORD, secret: SESSION_SECRET });
-  app.post('/api/auth/login', auth.login);
-  app.post('/api/auth/logout', auth.logout);
-  app.get('/api/auth/status', auth.status);
-  app.use('/api', auth.requireAuth);
-}
-if (!APP_PASSWORD || !SESSION_SECRET) {
-  app.get('/api/auth/status', (req, res) => res.json({ authenticated: true, authDisabled: true }));
-}
 
 // PostgreSQL connection pool
 const pool = new Pool({
@@ -42,6 +35,26 @@ const pool = new Pool({
   user: process.env.DB_USER || 'ikbal',
   password: process.env.DB_PASSWORD || '',
 });
+
+// Authentication: one account, created in the app on first visit (see auth.js).
+// AUTH_DISABLED=true skips it entirely (local development only).
+const authDisabled = process.env.AUTH_DISABLED === 'true';
+if (authDisabled) console.warn('⚠️  AUTH_DISABLED=true: authentication is OFF (local development only).');
+const authReady = createAuth({ pool, disabled: authDisabled });
+authReady.catch(err => { console.error('❌ Auth init failed:', err.message); process.exit(1); });
+const useAuth = (name) => async (req, res, next) => {
+  try {
+    return (await authReady)[name](req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+};
+app.get('/api/auth/status', useAuth('status'));
+app.post('/api/auth/setup', useAuth('setup'));
+app.post('/api/auth/login', useAuth('login'));
+app.post('/api/auth/logout', useAuth('logout'));
+app.post('/api/auth/change-password', useAuth('requireAuth'), useAuth('changePassword'));
+app.use('/api', useAuth('requireAuth'));
 
 // Test DB Connection on startup
 pool.query('SELECT NOW()', (err, res) => {
@@ -337,7 +350,7 @@ const REPEATS = ['', 'daily', 'weekly', 'monthly'];
 
 // Next due date for a recurring task (from its due date, or today when it has none)
 const nextRepeatDate = (due, repeat) => {
-  const d = due ? new Date(due) : new Date();
+  const d = due ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(due)) ? `${due}T00:00:00` : due) : new Date();
   if (repeat === 'daily') d.setDate(d.getDate() + 1);
   else if (repeat === 'weekly') d.setDate(d.getDate() + 7);
   else if (repeat === 'monthly') d.setMonth(d.getMonth() + 1);
@@ -725,7 +738,8 @@ async function updateHabitStreaks(habitId) {
     if (completedDates.size > 0) {
       const formatDate = (date) => date.toISOString().split('T')[0];
 
-      // 1. Calculate Current Streak
+      // 1. Calculate Current Streak (dates here come from the server's local clock, so format them locally, not as UTC)
+      const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const today = new Date();
       let checkDate = new Date(today);
       checkDate.setHours(0,0,0,0);
@@ -734,7 +748,7 @@ async function updateHabitStreaks(habitId) {
       let consecutiveDays = 0;
       let daysChecked = 0;
       
-      const todayStr = formatDate(checkDate);
+      const todayStr = fmtLocal(checkDate);
       const isTodayRequired = isRequiredDay(todayStr);
       const isTodayCompleted = completedDates.has(todayStr);
 
@@ -743,7 +757,7 @@ async function updateHabitStreaks(habitId) {
         // Check if yesterday was completed or not required
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = formatDate(yesterday);
+        const yesterdayStr = fmtLocal(yesterday);
         
         if (completedDates.has(yesterdayStr)) {
           startOffset = 1;
@@ -754,7 +768,7 @@ async function updateHabitStreaks(habitId) {
           let tempChecked = 0;
           while (!foundRequired && tempChecked < 7) {
             tempCheck.setDate(tempCheck.getDate() - 1);
-            const tempStr = formatDate(tempCheck);
+            const tempStr = fmtLocal(tempCheck);
             if (isRequiredDay(tempStr)) {
               foundRequired = true;
               if (completedDates.has(tempStr)) {
@@ -774,7 +788,7 @@ async function updateHabitStreaks(habitId) {
       checkDate.setDate(checkDate.getDate() - Math.floor(startOffset));
 
       while (!streakBroken && daysChecked < 365) {
-        const dateStr = formatDate(checkDate);
+        const dateStr = fmtLocal(checkDate);
         if (isRequiredDay(dateStr)) {
           if (completedDates.has(dateStr)) {
             consecutiveDays++;
@@ -1101,6 +1115,47 @@ app.post('/api/routines', async (req, res) => {
   }
 });
 
+// 2.5 UPDATE A ROUTINE (title, description, icon; steps are matched by id so today's checkmarks survive)
+app.put('/api/routines/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, description, icon, steps } = req.body;
+  if (!title || !String(title).trim()) return res.status(400).json({ error: 'Rutin adı gerekli.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upd = await client.query('UPDATE routines SET title = $1, description = $2, icon = $3 WHERE id = $4 RETURNING id',
+      [String(title).trim(), description || '', icon || 'sun', id]);
+    if (upd.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Routine not found' });
+    }
+    const keep = [];
+    const list = Array.isArray(steps) ? steps : [];
+    for (let i = 0; i < list.length; i++) {
+      const stepTitle = (typeof list[i] === 'string' ? list[i] : list[i].title || '').trim();
+      if (!stepTitle) continue;
+      const stepId = typeof list[i] === 'object' ? list[i].id : null;
+      const own = stepId ? await client.query('SELECT id FROM routine_steps WHERE id = $1 AND routine_id = $2', [stepId, id]) : { rows: [] };
+      if (own.rows.length) {
+        await client.query('UPDATE routine_steps SET title = $1, sort_order = $2 WHERE id = $3', [stepTitle, i, stepId]);
+        keep.push(stepId);
+      } else {
+        const ins = await client.query('INSERT INTO routine_steps (routine_id, title, sort_order) VALUES ($1, $2, $3) RETURNING id', [id, stepTitle, i]);
+        keep.push(ins.rows[0].id);
+      }
+    }
+    await client.query('DELETE FROM routine_steps WHERE routine_id = $1 AND NOT (id = ANY($2::int[]))', [id, keep]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error updating routine' });
+  } finally {
+    client.release();
+  }
+});
+
 // 3. TOGGLE/COMPLETE ROUTINE FOR TODAY
 app.post('/api/routines/:id/complete', async (req, res) => {
   const { id } = req.params;
@@ -1370,8 +1425,8 @@ app.post('/api/yearly-payments', async (req, res) => {
       }
     }
     
-    // Auto-generate next year's payment if created as paid, and NOT cancelled
-    if (is_paid && !is_cancelled) {
+    // Auto-generate next year's payment if created as paid, and NOT cancelled (undo of a delete skips this)
+    if (is_paid && !is_cancelled && !req.body.skip_next) {
       let nextDueDate = null;
       let nextTitle = title;
       if (due_date) {

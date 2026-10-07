@@ -4,6 +4,7 @@ import NumInput from './NumInput';
 import { notify, promptDialog } from '../ui';
 import { X, Plus, Check, Trash2, StickyNote, User, FileText, CalendarCheck, Star, GripVertical, Printer, BookmarkPlus, Repeat, ListChecks } from 'lucide-react';
 import { printProjectQuote } from '../print';
+import { projectPayments, dueLabel, dueColor } from '../receivables';
 
 export default function ProjectModal({
   isOpen,
@@ -394,6 +395,28 @@ export default function ProjectModal({
 
             {/* Right Column: Subtasks List */}
             <div className="modal-col-right" style={{ display: project ? 'flex' : 'none' }}>
+              {project && project.type === 'external' && (() => {
+                const pay = projectPayments(project);
+                if (!pay.hasPricing) return null;
+                return (
+                  <div className="pay-summary">
+                    <div><span>Toplam</span><b>{formatPrice(pay.total)}</b></div>
+                    <div><span>Alınan</span><b style={{ color: 'var(--success)' }}>{formatPrice(pay.paid)}</b></div>
+                    <div><span>Kalan</span><b style={{ color: pay.remaining > 0 ? '#f59e0b' : undefined }}>{formatPrice(pay.remaining)}</b></div>
+                    <div>
+                      <span>Sıradaki vade</span>
+                      {pay.overdueCount > 0 ? (
+                        <b style={{ color: '#ef4444' }}>{pay.overdueCount} gecikmiş</b>
+                      ) : pay.next ? (
+                        <b style={{ color: dueColor(pay.next.diffDays) }}>{dueLabel(pay.next.diffDays)}</b>
+                      ) : (
+                        <b>—</b>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="tpl-bar">
                 {templates.map(t => (
                   <span key={t.id} className="tpl-chip">

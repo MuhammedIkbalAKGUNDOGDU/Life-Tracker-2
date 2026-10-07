@@ -1,6 +1,6 @@
 # Softium Planner
 
-Kişisel yaşam ve iş takip uygulaması: projeler, hedefler, günlük düzen (alışkanlık + rutin), günlük ve alacak takibi (proje ödemeleri + yıllık ödemeler). Tek şifreyle korunur.
+Kişisel yaşam ve iş takip uygulaması: projeler, hedefler, günlük düzen (alışkanlık + rutin), günlük ve alacak takibi (proje ödemeleri + yıllık ödemeler). Tek hesapla (kullanıcı adı + şifre) korunur.
 
 **Özellikler:** Ana sayfa (bugünün görevleri, alışkanlıklar, haftalık özet) · Projeler (görevler, alt adımlar, öncelik, sürükle-bırak sıralama, şablonlar, ödeme geçmişi, teklif PDF) · Hedefler · Günlük düzen · Alacaklar (müşteri bazlı, aylık takvim, ekstre PDF, CSV) · Takvim · Günlük · `Ctrl+K` ile genel arama · hızlı ekle (+) · telefona yüklenebilir (PWA) · silmede "Geri al".
 
@@ -9,7 +9,7 @@ Kişisel yaşam ve iş takip uygulaması: projeler, hedefler, günlük düzen (a
 ```
 client/            React arayüzü
 server.js          API + derlenmiş arayüzü sunar
-auth.js            Şifre girişi (imzalı cookie)
+auth.js            Tek hesap, şifre girişi (hash'li şifre, imzalı cookie)
 schema.sql         İlk kurulumda oluşturulan tablolar
 Dockerfile         Uygulama imajı
 docker-compose.yml app + postgres
@@ -39,12 +39,12 @@ deploy/            nginx örneği ve yedek betiği
 
    | Değişken | Açıklama |
    |---|---|
-   | `APP_PASSWORD` | Giriş sayfasında yazacağın şifre. Uzun ve tahmin edilmesi zor olsun. |
-   | `SESSION_SECRET` | Oturum cookie'sini imzalar. Üret: `openssl rand -hex 32` |
+   | `SETUP_CODE` | **İlk kurulum kodu.** Hesabı oluştururken bir kez sorulur. Domaini bulan başka biri hesabı senden önce açamasın diye vardır. Boş bırakırsan sunucu rastgele bir kod üretip loga yazar (`docker compose logs app`). |
+   | `SESSION_SECRET` | İsteğe bağlı. Oturum cookie'sini imzalar. Boşsa otomatik üretilip veritabanında saklanır. |
    | `DB_DATABASE`, `DB_USER`, `DB_PASSWORD` | Postgres bilgileri (Docker bunlarla veritabanını kendisi oluşturur) |
    | `APP_PORT` | Sunucuda `127.0.0.1` üzerinde açılacak port (varsayılan `34823`) |
 
-   > Production'da `APP_PASSWORD` ve `SESSION_SECRET` boşsa uygulama **başlamaz**. Bu bilerek böyle.
+   > Kullanıcı adı ve şifreyi `.env`'ye yazmıyorsun. Hesabı uygulamayı ilk açtığında oluşturuyorsun.
 
 4. **DNS:** domain panelinde yayın yapacağın alt alan adı için (ör. `planner.alanadin.com`) sunucunun IP'sine **A kaydı** ekle.
 
@@ -86,7 +86,14 @@ rm data.sql
 ```
 
 ### 4. Giriş
-`https://planner.alanadin.com` adresini aç, `APP_PASSWORD` ile giriş yap. 5 hatalı denemeden sonra o IP 15 dakika kilitlenir. Oturum 30 gün sürer. Sol menüde "Çıkış Yap" var.
+`https://planner.alanadin.com` adresini ilk açtığında **hesap oluşturma** ekranı gelir:
+1. Kullanıcı adı ve şifre (en az 8 karakter) belirle.
+2. `.env`'deki `SETUP_CODE` değerini yaz (ya da loga yazılan kodu).
+3. **Hesabı Oluştur**'a bas. Bundan sonra kayıt ekranı **kalıcı olarak kapanır**, uygulamada yalnızca bu tek hesap vardır.
+
+Sonraki her girişte kullanıcı adı ve şifre sorulur. Şifre veritabanında düz yazıyla değil, tuzlanmış `scrypt` hash'i olarak saklanır. 5 hatalı denemeden sonra o IP 15 dakika kilitlenir. Oturum 30 gün sürer. Sol menüde **Hesap** (şifre değiştirme, değişince diğer cihazlardaki oturumlar kapanır) ve **Çıkış Yap** var; telefonda "Daha" panelinde.
+
+Şifreni unutursan: sunucuda `docker compose exec db psql -U $DB_USER -d $DB_DATABASE -c "DELETE FROM app_users;"` komutu hesabı siler ve kurulum ekranı yeniden açılır (verilerin silinmez).
 
 ## Sağlık: spor ve beslenme
 Menüde **Sağlık** sekmesi: **Spor** (gün → antrenman → hareket → set; geçen seferin setleri, öneri, rekor, hacim ve 1RM grafikleri, vücut kilosu) ve **Beslenme** (kalori ve makrolar, öğünler, günlük hedefler). Telefonda alt menüyle rahat kullanılacak şekilde tasarlandı. Siteyi telefonda tarayıcıdan "Ana ekrana ekle" ile uygulama gibi kullanabilirsiniz.
@@ -151,14 +158,15 @@ Yedekler sunucuyla aynı diskte durur; arada bir `scp` ile başka yere de kopyal
 ## Yerel geliştirme (Docker olmadan)
 ```bash
 createdb life_tracker && psql -d life_tracker -f schema.sql
-cp .env.example .env     # DB_* ve PORT satırlarını aç, APP_PASSWORD/SESSION_SECRET'ı boş bırakırsan giriş devre dışı kalır
+cp .env.example .env     # DB_* ve PORT satırlarını aç; yerelde girişi kapatmak için AUTH_DISABLED=true yaz
 npm install && (cd client && npm install)
 npm run dev              # API  -> http://localhost:34823
 cd client && npm run dev # arayüz -> http://localhost:43921 (/api isteklerini API'ye yönlendirir)
 ```
 
 ## Güvenlik notları
-- `.env` dosyasını asla commit etme. Şifreyi değiştirmek için `.env`'yi düzenleyip `docker compose up -d` çalıştır.
-- `SESSION_SECRET`'ı değiştirirsen açık tüm oturumlar düşer.
+- `.env` dosyasını asla commit etme.
+- Şifreyi uygulamadan değiştirirsin (Hesap). Yedek dosyasına (JSON) kullanıcı bilgileri ve şifre hash'i **konmaz**.
+- `AUTH_DISABLED=true` sadece yerel geliştirme içindir, sunucuda asla kullanma.
 - Tüm `/api/*` uçları giriş gerektirir; girişsiz istekler 401 döner.
 - Sunucu güvenlik duvarında yalnızca 80/443 (ve SSH) açık olsun. 34823 dışarı açılmamalı.

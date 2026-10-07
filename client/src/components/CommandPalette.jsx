@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { registerBack } from '../backStack';
 import { Search, FolderKanban, CheckSquare, Users, Target, Flame, Sparkles, BookOpen, Home, Wallet, CalendarDays, HeartPulse } from 'lucide-react';
 
 const norm = (s) => String(s || '').toLocaleLowerCase('tr');
@@ -23,6 +24,14 @@ export default function CommandPalette({
   const [index, setIndex] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+
+  // Phone back button closes the palette
+  useEffect(() => {
+    if (!open) return undefined;
+    const back = registerBack(() => onClose());
+    return () => back.release();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (open) {

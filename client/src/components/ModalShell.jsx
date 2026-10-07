@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { confirmDialog } from '../ui';
+import { registerBack } from '../backStack';
 
 // Open modals, topmost last: only the topmost reacts to Esc / Ctrl+Enter
 const stack = [];
@@ -16,7 +17,8 @@ export default function ModalShell({ onClose, className = '', style, resetKey, c
   const pressedOnBackdrop = useRef(false);
   const requestCloseRef = useRef(null);
 
-  requestCloseRef.current = async () => {
+  // `fromBack`: the user pressed the phone's back button (history entry already gone)
+  requestCloseRef.current = async (fromBack = false, handle = null) => {
     if (dirty.current) {
       const leave = await confirmDialog({
         title: 'Kaydedilmemiş değişiklikler var',
@@ -25,7 +27,10 @@ export default function ModalShell({ onClose, className = '', style, resetKey, c
         cancelText: 'Düzenlemeye dön',
         danger: true
       });
-      if (!leave) return;
+      if (!leave) {
+        if (fromBack && handle) handle.repush(); // stay open: put the history entry back
+        return;
+      }
     }
     onClose();
   };
@@ -35,6 +40,7 @@ export default function ModalShell({ onClose, className = '', style, resetKey, c
   useEffect(() => {
     const id = {};
     stack.push(id);
+    const back = registerBack(() => requestCloseRef.current(true, back));
     const el = ref.current;
 
     const markDirty = () => { dirty.current = true; };
@@ -66,6 +72,7 @@ export default function ModalShell({ onClose, className = '', style, resetKey, c
       el?.removeEventListener('input', markDirty);
       el?.removeEventListener('change', markDirty);
       stack.splice(stack.indexOf(id), 1);
+      back.release();
     };
   }, []);
 

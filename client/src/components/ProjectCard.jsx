@@ -1,4 +1,5 @@
-import { CheckSquare, Edit3, Trash2, User } from 'lucide-react';
+import { CheckSquare, Edit3, Trash2, User, AlertCircle, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { projectPayments, dueLabel, dueColor } from '../receivables';
 
 const getStatusLabel = (status) => {
   switch (status) {
@@ -57,6 +58,9 @@ export default function ProjectCard({
     }).format(converted);
   };
 
+  const pay = project.type === 'external' ? projectPayments(project) : null;
+  const fmtDay = (d) => d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+
   const isDragging = index === draggedIndex;
   const isDragOver = index === dragOverIndex;
 
@@ -107,6 +111,31 @@ export default function ProjectCard({
               <span style={{ opacity: 0.5 }}> / </span>
               <span>{formatPrice(totalBudget)}</span>
             </span>
+          </div>
+        )}
+
+        {pay && pay.hasPricing && (
+          <div className={`pay-status ${pay.overdueCount > 0 ? 'overdue' : pay.remaining <= 0 ? 'done' : ''}`} onClick={(e) => e.stopPropagation()}>
+            {pay.remaining <= 0 ? (
+              <span className="pay-status-line"><CheckCircle2 size={14} /> Tüm ödemeler alındı</span>
+            ) : (
+              <>
+                <span className="pay-status-line"><b>Kalan {formatPrice(pay.remaining)}</b></span>
+                {pay.overdueCount > 0 && (
+                  <span className="pay-status-line" style={{ color: '#ef4444' }}>
+                    <AlertCircle size={14} /> {pay.overdueCount} ödeme gecikti ({formatPrice(pay.overdueAmount)})
+                  </span>
+                )}
+                {pay.next && pay.next.diffDays >= 0 && (
+                  <span className="pay-status-line" style={{ color: dueColor(pay.next.diffDays) }}>
+                    <CalendarClock size={14} /> Sıradaki: {pay.next.title} · {fmtDay(pay.next.date)} ({dueLabel(pay.next.diffDays)})
+                  </span>
+                )}
+                {!pay.next && pay.undated > 0 && (
+                  <span className="pay-status-line muted"><CalendarClock size={14} /> Vade tarihi girilmemiş</span>
+                )}
+              </>
+            )}
           </div>
         )}
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { localDateStr, dayString } from '../dates';
 import ModalShell from './ModalShell';
 import NumInput from './NumInput';
 import { confirmDialog, notify } from '../ui';
@@ -150,7 +151,7 @@ export default function YearlyPaymentsDashboard({
     setSelectedPayment(null);
     setTitle('');
     setClient('');
-    setDueDate(new Date().toISOString().split('T')[0]);
+    setDueDate(localDateStr());
     setDescription('');
     setProjectId('');
     setItems([]);
@@ -164,7 +165,7 @@ export default function YearlyPaymentsDashboard({
     setSelectedPayment(payment);
     setTitle(payment.title || '');
     setClient(payment.client || '');
-    setDueDate(payment.due_date ? new Date(payment.due_date).toISOString().split('T')[0] : '');
+    setDueDate(payment.due_date ? dayString(payment.due_date) : '');
     setDescription(payment.description || '');
     setProjectId(payment.project_id || '');
     setItems(payment.items ? payment.items.map(item => ({
@@ -174,7 +175,7 @@ export default function YearlyPaymentsDashboard({
       description: item.description || ''
     })) : []);
     setIsPaid(payment.is_paid || false);
-    setPaymentDate(payment.payment_date ? new Date(payment.payment_date).toISOString().split('T')[0] : '');
+    setPaymentDate(payment.payment_date ? dayString(payment.payment_date) : '');
     setIsCancelled(payment.is_cancelled || false);
     setIsModalOpen(true);
   };
@@ -190,7 +191,7 @@ export default function YearlyPaymentsDashboard({
       description: description.trim(),
       project_id: projectId ? parseInt(projectId) : null,
       is_paid: isPaid,
-      payment_date: isPaid ? (paymentDate || new Date().toISOString().split('T')[0]) : null,
+      payment_date: isPaid ? (paymentDate || localDateStr()) : null,
       is_cancelled: isCancelled,
       items: items.map(item => ({
         category: item.category,
@@ -225,11 +226,31 @@ export default function YearlyPaymentsDashboard({
   };
 
   const handleDelete = async (id) => {
+    const snapshot = payments.find(p => p.id === id);
     if (!(await confirmDialog({ title: 'Yıllık ödeme silinsin mi?', message: 'Bu kayıt ve kalemleri kalıcı olarak silinir.', confirmText: 'Sil', danger: true }))) return;
     try {
       const res = await fetch(`/api/yearly-payments/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Ödeme silinemedi.');
       fetchPayments();
+      if (snapshot) {
+        notify('Yıllık ödeme silindi.', 'info', {
+          label: 'Geri al',
+          onClick: async () => {
+            const r = await fetch('/api/yearly-payments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project_id: snapshot.project_id, title: snapshot.title, client: snapshot.client,
+                due_date: snapshot.due_date, description: snapshot.description,
+                is_paid: snapshot.is_paid, payment_date: snapshot.payment_date, is_cancelled: snapshot.is_cancelled, skip_next: true,
+                items: (snapshot.items || []).map(i => ({ category: i.category, amount: i.amount, currency: i.currency, description: i.description }))
+              })
+            });
+            if (r.ok) { fetchPayments(); notify('Yıllık ödeme geri alındı.', 'success'); }
+            else notify('Geri alınamadı.', 'error');
+          }
+        });
+      }
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -916,7 +937,7 @@ export default function YearlyPaymentsDashboard({
                       onChange={(e) => {
                         setIsPaid(e.target.checked);
                         if (e.target.checked && !paymentDate) {
-                          setPaymentDate(new Date().toISOString().split('T')[0]);
+                          setPaymentDate(localDateStr());
                         }
                       }}
                       style={{ width: '18px', height: '18px', cursor: 'pointer' }}
