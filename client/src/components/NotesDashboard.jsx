@@ -108,8 +108,8 @@ export default function NotesDashboard() {
   const active = data.active.filter(match);
   const completed = data.completed.filter(match);
 
-  const NoteRow = ({ note }) => (
-    <div className={`note-row ${note.is_done ? 'done' : ''}`}>
+  const noteRow = (note) => (
+    <div key={note.id} className={`note-row ${note.is_done ? 'done' : ''}`}>
       <button type="button" className={`note-check ${note.is_done ? 'checked' : ''}`} onClick={() => toggleDone(note)} aria-label={note.is_done ? 'Geri aç' : 'Tamamla'}>
         {note.is_done && <Check size={16} />}
       </button>
@@ -206,13 +206,13 @@ export default function NotesDashboard() {
                 <StickyNote size={34} />
                 <p>{data.active.length === 0 ? 'Aktif not yok. Yukarıdan ilk notunu ekle.' : 'Aramaya uyan aktif not yok.'}</p>
               </div>
-            ) : active.map(n => <NoteRow key={n.id} note={n} />)}
+            ) : active.map(noteRow)}
           </section>
 
           {data.showCompleted && completed.length > 0 && (
             <section className="glass-card notes-card">
               <h3 className="notes-sub"><Check size={16} /> Tamamlananlar ({completed.length})</h3>
-              {completed.map(n => <NoteRow key={n.id} note={n} />)}
+              {completed.map(noteRow)}
             </section>
           )}
           {!data.showCompleted && data.completed.length > 0 && (
