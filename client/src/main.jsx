@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import Login from './components/Login.jsx'
 import DialogHost from './components/DialogHost.jsx'
+import ScrollTop from './components/ScrollTop.jsx'
 import './index.css'
 
 // Any expired/invalid session (401 from the API) sends the user back to the login screen
@@ -52,6 +53,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthGate />
     <DialogHost />
+    <ScrollTop />
   </React.StrictMode>,
 )
 

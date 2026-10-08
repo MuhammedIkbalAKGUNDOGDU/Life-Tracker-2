@@ -3298,6 +3298,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   .filters { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   .filters::-webkit-scrollbar { display: none; }
   .project-search { width: 100%; }
+  .action-bar-section > * { max-width: 100%; box-sizing: border-box; }
+  .action-bar-section > .btn-primary { width: 100%; justify-content: center; }
   .project-search input { width: 100%; }
 }
 
@@ -3425,3 +3427,18 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .login-logo { margin-bottom: 4px; }
 /* the brand title was a white-to-lilac gradient; on the light theme and next to the new mark use the plain text color */
 .brand h1 { background: none; -webkit-text-fill-color: currentColor; color: var(--text-main); }
+
+/* Scroll-to-top button: phones only */
+.scroll-top { display: none; }
+@media (max-width: 900px) {
+  .scroll-top {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom));
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent, #E8601C); color: #fff; border: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35); z-index: 900;
+    opacity: 0; transform: translateY(12px); pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .scroll-top.visible { opacity: 1; transform: none; pointer-events: auto; }
+}

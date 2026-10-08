@@ -68,6 +68,23 @@ function parseWorkoutText(text) {
   return items;
 }
 
+// Free format without "x": "bench 20 12" (weight reps), "bench 200 12 3" (weight reps sets),
+// several entries per message: "bench 20 1 bench 20 12". Names are checked against the exercise list.
+async function parseFreeWorkout(pool, text) {
+  const RE = /([^\d\n;,:]+?)\s+(\d+(?:[.,]\d+)?)\s*(?:kg)?\s+(\d+)(?:\s+(\d+))?(?=\s|[,;]|$)/gi;
+  const list = await H.allExercises(pool);
+  const byName = new Map();
+  for (const m of text.matchAll(RE)) {
+    const name = m[1].trim();
+    if (!name || !H.resolveExercise(list, name).best) continue;
+    const repeat = m[4] ? Math.min(parseInt(m[4]), 12) : 1;
+    const key = H.norm(name);
+    if (!byName.has(key)) byName.set(key, { name, sets: [] });
+    for (let i = 0; i < repeat; i++) byName.get(key).sets.push({ weight: num(m[2]), reps: parseInt(m[3]) });
+  }
+  return [...byName.values()];
+}
+
 const UNITS = {
   g: 1, gr: 1, gram: 1, grams: 1, ml: 1, kg: 1000,
   adet: 'serving', porsiyon: 'serving', dilim: 'serving', tane: 'serving',
@@ -154,28 +171,53 @@ const HELP = {
   ),
   workout: () => (
     '🏋️ <b>Workout</b>\n\n' +
-    '<b>Type it</b>\n' +
-    '• <code>bench 80x8 80x8 75x10</code>\n' +
-    '• <code>squat 100x5x3</code> (3 sets of 100 kg × 5)\n' +
-    '• <code>bench 80x8, squat 100x5x3</code> (several lifts)\n' +
-    '• Just a lift name shows its last sessions: <code>bench</code> or <code>bench 5</code>\n\n' +
+    '<b>How to type a set</b>\n' +
+    '<code>bench 80x8</code> = Bench Press, <b>80 kg × 8 reps</b> (1 set)\n' +
+    'Format: <code>lift weight x reps</code>. The lift name can be short or an alias (bench, squat, ohp, db bench…).\n\n' +
+    '<b>Several sets of the same lift</b>\n' +
+    '• <code>bench 80x8 80x8 75x10</code> → 3 sets: 80×8, 80×8, 75×10\n' +
+    '• <code>squat 100x5x3</code> → 3 sets of 100 kg × 5 (last number = set count)\n\n' +
+    '<b>Several lifts at once</b>\n' +
+    '• <code>bench 80x8 80x8, squat 100x5x3</code> (separate with comma, ; or new line)\n\n' +
+    '<b>Without the "x"</b>\n' +
+    '• <code>bench 80 8</code> → 80 kg × 8\n' +
+    '• <code>bench 80 8 3</code> → 3 sets of 80 kg × 8\n' +
+    '• <code>bench 20 1 bench 20 12</code> → two entries in one message\n' +
+    'Decimals work: <code>bench 82.5x6</code>. "kg" is optional: <code>bench 80kg x 8</code>.\n\n' +
+    '<b>What happens next</b>\n' +
+    'I show what I understood and ask you to confirm before saving. If the name matches several lifts (e.g. "db"), I ask which one. Sets go to today\'s workout, and you get a 🎉 when you beat your best (estimated 1RM).\n\n' +
+    '<b>Look up history</b>\n' +
+    '• <code>bench</code> → last 3 sessions\n' +
+    '• <code>bench 5</code> or <code>/history bench 5</code> → last 5 sessions (max 10)\n' +
+    '(A single number after the name = history; two numbers = a set.)\n\n' +
     '<b>Or use buttons</b>\n' +
     '/workout – pick a lift, adjust weight and reps, tap Save\n\n' +
     '<b>Commands</b>\n' +
     '/workout – log sets with buttons\n' +
-    '/history bench 5 – last 5 sessions of a lift\n' +
+    '/history bench 5 – last sessions of a lift\n' +
     '/lastworkout – your most recent workout\n' +
-    '/undo – remove the last logged sets\n\n' +
-    'You get a 🎉 when you beat your best.'
+    '/undo – remove the last logged sets'
   ),
   food: () => (
     '🍽 <b>Food</b>\n\n' +
-    '<b>Type it</b>\n' +
+    '<b>How to type it</b>\n' +
+    '<code>food amount</code> → <code>tavuk göğsü 200g</code>\n' +
+    'Separate several foods with comma, ; or new line:\n' +
     '• <code>tavuk göğsü 200g, pilav 150g</code>\n' +
+    '• <code>yumurta 3 adet</code> or <code>3 yumurta</code>\n' +
+    '• <code>süt 250 ml</code>\n\n' +
+    '<b>Units</b>\n' +
+    '• g / gr / gram, kg, ml → exact amount (no unit = grams)\n' +
+    '• adet / tane / dilim / porsiyon (piece, serving, slice) → uses the food\'s serving size\n\n' +
+    '<b>Choose the meal</b>\n' +
+    'Start with the meal and a colon:\n' +
     '• <code>breakfast: yumurta 3 adet, ekmek 60g</code>\n' +
-    'Meal word is optional (breakfast, lunch, dinner, snack); otherwise it follows the time of day.\n' +
-    'Units: g, kg, ml, or piece/serving/slice (uses the food\'s serving size).\n\n' +
-    'I search your saved foods first, then Open Food Facts, and ask you to confirm before saving.\n\n' +
+    '• <code>lunch:</code> · <code>dinner:</code> · <code>snack:</code> (Turkish also works: kahvaltı, öğle, akşam, ara)\n' +
+    'No meal word? I pick by time of day: before 11 breakfast, until 16 lunch, until 21 dinner, later snack.\n\n' +
+    '<b>How foods are found</b>\n' +
+    '1. Your saved foods (typo tolerant)\n' +
+    '2. Open Food Facts if nothing matches\n' +
+    'If several foods match, or you forgot the amount, I show buttons to pick and ask for grams. At the end I show the total kcal and macros and ask you to confirm before saving.\n\n' +
     '<b>Commands</b>\n' +
     '/food – tell me what you ate\n' +
     '/meals – today\'s meals\n' +
@@ -673,6 +715,8 @@ async function handleText(pool, textRaw) {
   // Workout text: "bench 80x8 80x8"
   const workout = parseWorkoutText(text);
   if (workout.length) return proposeWorkout(pool, workout);
+  const free = await parseFreeWorkout(pool, text);
+  if (free.length) return proposeWorkout(pool, free);
 
   // Exercise history: "bench" / "bench 5"
   const hq = text.match(/^(.+?)(?:\s+(\d{1,2}))?$/);
@@ -692,7 +736,7 @@ async function handleText(pool, textRaw) {
   const food = parseFoodText(text);
   if (food.items.length && (food.meal || /\d/.test(text))) return startFood(pool, food);
 
-  return send('I didn\'t get that 🤔\nTry <code>bench 80x8 80x8</code>, <code>yumurta 3 adet</code>, <code>note: buy milk</code> or <code>/weight 82.4</code>.\nAll commands: /help');
+  return send('I didn\'t get that 🤔\nTry <code>bench 80x8 80x8</code> or <code>bench 80 8 3</code>, <code>yumurta 3 adet</code>, <code>note: buy milk</code> or <code>/weight 82.4</code>.\nAll commands: /help');
 }
 
 async function handleCallback(pool, cb) {
@@ -931,4 +975,4 @@ function start(pool) {
   })();
 }
 
-module.exports = { start, parseWorkoutText, parseFoodText, _test: { handleText, handleCallback } };
+module.exports = { start, parseWorkoutText, parseFoodText, _test: { handleText, handleCallback, parseFreeWorkout } };

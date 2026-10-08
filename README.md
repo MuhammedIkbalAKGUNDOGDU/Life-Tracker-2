@@ -114,6 +114,7 @@ Aşağıdaki "Telegram ödeme hatırlatması" bölümündeki gibi bir bot oluşt
 | 🏋️ Spor | `bench 80x8 80x8 75x10` | Setleri bugünün antrenmanına ekler (onay ister) |
 | | `squat 100x5x3` | 100 kg × 5 tekrarı 3 set ekler |
 | | `bench 80x8, squat 100x5x3` | Birden fazla hareket |
+| | `bench 80 8` / `bench 80 8 3` / `bench 20 1 bench 20 12` | x'siz yazım: kilo tekrar [set sayısı] |
 | | `/workout` | Hareket seç, ağırlık/tekrarı düğmelerle ayarla, "Save set" |
 | | `/history bench 5` (ya da sadece `bench`) | O hareketin son 3/5 antrenmanı; "Add to today" ve "Copy last session" düğmeleri |
 | | `/lastworkout` | Son antrenmanın özeti |
