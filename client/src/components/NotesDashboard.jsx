@@ -29,6 +29,26 @@ function Linkified({ text }) {
     : <span key={i}>{p}</span>));
 }
 
+// Day picker button: opens the browser's date picker (the real input is kept invisible next to it)
+function DateChip({ value, onChange, emptyLabel, size }) {
+  const ref = useRef(null);
+  const open = () => {
+    const el = ref.current;
+    if (!el) return;
+    try { el.showPicker(); } catch { el.focus(); el.click(); }
+  };
+  return (
+    <span className={`note-date ${value ? 'set' : ''}`}>
+      <button type="button" className="note-date-btn" onClick={open} title="Takvimde göstermek için gün seç">
+        <CalendarDays size={size} />
+        <span>{value ? dayLabel(value) : emptyLabel}</span>
+      </button>
+      <input ref={ref} type="date" tabIndex={-1} aria-label="Not günü" value={value || ''} onChange={(e) => onChange(e.target.value)} />
+      {value && <button type="button" className="note-date-x" onClick={() => onChange(null)} aria-label="Günü kaldır">×</button>}
+    </span>
+  );
+}
+
 export default function NotesDashboard() {
   const [data, setData] = useState({ active: [], completed: [], showCompleted: true });
   const [loading, setLoading] = useState(true);
@@ -132,12 +152,7 @@ export default function NotesDashboard() {
             <Linkified text={note.text} />
           </div>
         )}
-        <label className={`note-date ${note.note_date ? 'set' : ''}`} title="Takvimde göstermek için gün seç">
-          <CalendarDays size={13} />
-          <span>{note.note_date ? dayLabel(note.note_date) : 'Gün ekle'}</span>
-          <input type="date" value={note.note_date || ''} onChange={(e) => setNoteDate(note, e.target.value)} aria-label="Not günü" />
-          {note.note_date && <button type="button" className="note-date-x" onClick={(e) => { e.preventDefault(); setNoteDate(note, null); }} aria-label="Günü kaldır">×</button>}
-        </label>
+        <DateChip value={note.note_date} onChange={(v) => setNoteDate(note, v)} emptyLabel="Gün ekle" size={13} />
         <small>{note.is_done ? `tamamlandı · ${whenText(note.done_at)}` : whenText(note.created_at)}</small>
       </div>
       {!note.is_done && editingId !== note.id && (
@@ -179,12 +194,7 @@ export default function NotesDashboard() {
           placeholder="Yeni not yaz… (Enter ekler, Shift+Enter yeni satır)"
           aria-label="Yeni not"
         />
-        <label className={`note-date ${draftDate ? 'set' : ''}`} title="İstersen takvimde görünmesi için gün seç">
-          <CalendarDays size={15} />
-          <span>{draftDate ? dayLabel(draftDate) : 'Gün'}</span>
-          <input type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)} aria-label="Not günü" />
-          {draftDate && <button type="button" className="note-date-x" onClick={(e) => { e.preventDefault(); setDraftDate(''); }} aria-label="Günü kaldır">×</button>}
-        </label>
+        <DateChip value={draftDate} onChange={setDraftDate} emptyLabel="Gün" size={15} />
         <button type="submit" className="btn btn-primary" disabled={!draft.trim()}><Plus size={18} /> Ekle</button>
       </form>
 
