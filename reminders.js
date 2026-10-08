@@ -3,8 +3,8 @@
 // at REMINDER_HOUR (server local time, default 09) and lists overdue + next 3 days.
 const API = (token) => `https://api.telegram.org/bot${token}/sendMessage`;
 
-const money = (n) => `${Math.round(n).toLocaleString('tr-TR')} ₺`;
-const fmtDate = (d) => new Date(d).toLocaleDateString('tr-TR');
+const money = (n) => `${Math.round(n).toLocaleString('en-US')} ₺`;
+const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const dayDiff = (d) => {
   const a = new Date(d); a.setHours(0, 0, 0, 0);
   const b = new Date(); b.setHours(0, 0, 0, 0);
@@ -31,7 +31,7 @@ async function collect(pool, rate) {
     WHERE NOT y.is_paid AND NOT y.is_cancelled AND y.due_date IS NOT NULL
   `, [rate]);
   for (const r of yearly.rows) {
-    if (parseFloat(r.total) > 0) items.push({ who: r.client || r.title, what: `${r.title} (yıllık)`, amount: parseFloat(r.total), due: r.due_date });
+    if (parseFloat(r.total) > 0) items.push({ who: r.client || r.title, what: `${r.title} (yearly)`, amount: parseFloat(r.total), due: r.due_date });
   }
   return items;
 }
@@ -48,10 +48,10 @@ async function buildMessage(pool) {
   if (items.length === 0) return null;
   items.sort((a, b) => a.diff - b.diff);
 
-  const label = (d) => (d < 0 ? `${-d} gün gecikti` : d === 0 ? 'bugün' : d === 1 ? 'yarın' : `${d} gün sonra`);
+  const label = (d) => (d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue` : d === 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`);
   const lines = items.map(i => `• ${i.who} — ${i.what}: ${money(i.amount)} (${fmtDate(i.due)}, ${label(i.diff)})`);
   const total = items.reduce((s, i) => s + i.amount, 0);
-  return `💰 Ödeme hatırlatması\n\n${lines.join('\n')}\n\nToplam: ${money(total)}`;
+  return `💰 Payment reminder\n\n${lines.join('\n')}\n\nTotal: ${money(total)}`;
 }
 
 async function send(text) {

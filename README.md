@@ -95,6 +95,9 @@ Sonraki her girişte kullanıcı adı ve şifre sorulur. Şifre veritabanında d
 
 Şifreni unutursan: sunucuda `docker compose exec db psql -U $DB_USER -d $DB_DATABASE -c "DELETE FROM app_users;"` komutu hesabı siler ve kurulum ekranı yeniden açılır (verilerin silinmez).
 
+## Notlar
+Menüde **Notlar** sayfası (telefonda "Daha" panelinde): kendine not yaz, tamamlandı işaretle, düzenle, sil (geri alınabilir). **Tamamlananlar: görünür/gizli** düğmesiyle tamamlanan notları listede gösterip gizleyebilirsin; bu ayar Telegram botundaki listeyle ortaktır. Hızlı ekle (+) menüsünden "Not (yapılacak)" ile her sayfadan not eklenir, son 5 açık not Ana Sayfa'da görünür.
+
 ## Sağlık: spor ve beslenme
 Menüde **Sağlık** sekmesi: **Spor** (gün → antrenman → hareket → set; geçen seferin setleri, öneri, rekor, hacim ve 1RM grafikleri, vücut kilosu) ve **Beslenme** (kalori ve makrolar, öğünler, günlük hedefler). Telefonda alt menüyle rahat kullanılacak şekilde tasarlandı. Siteyi telefonda tarayıcıdan "Ana ekrana ekle" ile uygulama gibi kullanabilirsiniz.
 
@@ -104,17 +107,30 @@ Menüde **Sağlık** sekmesi: **Spor** (gün → antrenman → hareket → set; 
 ## Telegram botu: spor ve yemek girişi (isteğe bağlı, ücretsiz)
 Aşağıdaki "Telegram ödeme hatırlatması" bölümündeki gibi bir bot oluşturup `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` yazdığınızda aynı bot veri girişi için de çalışır. Yapay zekâ kullanmaz, tamamen ücretsizdir. Bot yalnızca sizin chat'inize cevap verir.
 
-| Yazın | Ne olur |
-|---|---|
-| `bench 80x8 80x8 75x10` | Setleri bugünün antrenmanına ekler (onay ister) |
-| `squat 100x5x3` | 100 kg × 5 tekrarı 3 set ekler |
-| `bench 80x8, squat 100x5x3` | Birden fazla hareket |
-| `bench` / `bench 5` | O hareketin son 3 / 5 antrenmanını gösterir, "Bugüne ekle" ve "Geçen seferkini kopyala" düğmeleri çıkar |
-| `/antrenman` | Hareket seç, ağırlık ve tekrarı düğmelerle ayarla, "Seti kaydet" |
-| `kahvaltı: yumurta 3 adet, ekmek 60g` | Yemekleri bulup kalori ve makroyu hesaplar (onay ister) |
-| `tavuk göğsü 200g` | Öğünü saate göre seçer |
-| `kilo 82.4` | Vücut kilosunu kaydeder |
-| `/bugun`, `/kalan`, `/son`, `/geri`, `/yardim` | Özet, kalan kalori/protein, son antrenman, son kaydı sil, yardım |
+**Komutlar (İngilizce, konuya göre ayrı):**
+
+| Konu | Komut | Ne yapar |
+|---|---|---|
+| 🏋️ Spor | `bench 80x8 80x8 75x10` | Setleri bugünün antrenmanına ekler (onay ister) |
+| | `squat 100x5x3` | 100 kg × 5 tekrarı 3 set ekler |
+| | `bench 80x8, squat 100x5x3` | Birden fazla hareket |
+| | `/workout` | Hareket seç, ağırlık/tekrarı düğmelerle ayarla, "Save set" |
+| | `/history bench 5` (ya da sadece `bench`) | O hareketin son 3/5 antrenmanı; "Add to today" ve "Copy last session" düğmeleri |
+| | `/lastworkout` | Son antrenmanın özeti |
+| 🍽 Yemek | `tavuk göğsü 200g, pilav 150g` | Yemekleri bulur, kaloriyi hesaplar (onay ister) |
+| | `breakfast: yumurta 3 adet, ekmek 60g` | Öğün adı isteğe bağlı (breakfast, lunch, dinner, snack) |
+| | `/food`, `/meals`, `/macros` | Yemek gir, bugünkü öğünler, kalan kalori/protein |
+| 📝 Notlar | `note: buy milk` veya `/note buy milk` | Not ekler |
+| | `/notes` | Açık notlar; üstüne dokununca tamamlanır. ➕ Add · 👁 Show/Hide completed · 🧹 Clear completed |
+| | `/completed` | Tamamlananları da gösterir |
+| ⚖️ Kilo | `/weight 82.4` | Vücut kilosunu kaydeder |
+| Genel | `/today` · `/undo` · `/clear` · `/help` | Günün özeti · son kaydı sil · sohbeti temizle · yardım (bölüm düğmeleriyle) |
+
+**Hareketi nasıl tanıyor:** Yazdığın isim önce hareketlerin adı ve takma adlarıyla (Sağlık > Spor > Hareket ekle > kalem simgesi ile düzenlenir) karşılaştırılır. Tam eşleşme varsa (`bench` = Bench Press, `db bench` = Dumbbell Press, `ohp` = Overhead Press) soru sormadan seçer. `press` gibi birden fazla harekete uyan bir isimse hangisini kastettiğini düğmelerle sorar. Hiçbirine uymayan bir isim yeni hareket olarak kaydedilir.
+
+Eski Türkçe komutlar (`/yardim`, `/antrenman`, `/notlar` ...) takma ad olarak çalışmaya devam eder. `/clear` sohbetteki son 48 saatlik mesajları siler (Telegram daha eskisine izin vermez), verilerine dokunmaz. Mesajlar ve komut menüsü İngilizcedir.
+
+**Bota profil resmi:** `deploy/telegram-bot-profile.png` dosyasını Telegram'da @BotFather'a gönder: `/setuserpic` → botunu seç → resmi gönder.
 
 Notlar:
 - Bot "long polling" ile çalışır, domain, webhook veya açık port gerekmez.

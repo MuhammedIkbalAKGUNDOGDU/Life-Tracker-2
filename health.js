@@ -246,21 +246,51 @@ async function allExercises(pool) {
   return rows;
 }
 
-// Find exercises by (fuzzy) name; best matches first
-function matchExercises(list, query) {
+// Find exercises by (fuzzy) name; best matches first.
+// Scoring (per exercise, over its name and aliases):
+//   100  the text IS the name or an alias            ("bench" -> Bench Press)
+//    60  every typed word is inside one name/alias   ("incline" -> Incline Bench Press); fewer extra words in the name is better
+//    55  every typed word is found across the name + aliases combined   ("db bench" -> Dumbbell Press: "db press" + "dumbbell bench")
+//    40  the name is only part of what was typed     ("db bench" contains "bench" -> weak, the extra word "db" is unexplained)
+//    25  loose substring
+// Usage adds a tiny bonus so the lift you do most wins ties.
+function rankExercises(list, query) {
   const q = norm(query);
   if (!q) return [];
-  const scored = [];
+  const qWords = q.split(' ');
+  const out = [];
   for (const e of list) {
     const names = [e.name, ...(e.aliases || [])].map(norm);
     let score = 0;
-    if (names.includes(q)) score = 100;
-    else if (names.some(n => n.startsWith(q) || q.startsWith(n))) score = 70;
-    else if (names.some(n => n.includes(q) || q.includes(n))) score = 50;
-    else if (q.split(' ').every(w => names.some(n => n.includes(w)))) score = 30;
-    if (score) scored.push({ e, score: score + Math.min(e.uses || 0, 20) / 100 });
+    for (const n of names) {
+      const nWords = n.split(' ');
+      let s = 0;
+      if (n === q) s = 100;
+      else if (qWords.every(w => nWords.some(x => x === w || x.startsWith(w)))) s = 60 - Math.min(10, (nWords.length - qWords.length) * 2);
+      else if (nWords.every(x => qWords.some(w => w === x || w.startsWith(x)))) s = 40;
+      else if (n.includes(q) || q.includes(n)) s = 25;
+      if (s > score) score = s;
+    }
+    if (score < 55) {
+      const allWords = new Set(names.flatMap(n => n.split(' ')));
+      if (qWords.every(w => [...allWords].some(x => x === w || x.startsWith(w)))) score = Math.max(score, 55);
+    }
+    if (score) out.push({ e, score: score + Math.min(e.uses || 0, 20) / 100 });
   }
-  return scored.sort((a, b) => b.score - a.score).map(s => s.e);
+  return out.sort((a, b) => b.score - a.score);
+}
+
+function matchExercises(list, query) {
+  return rankExercises(list, query).map(r => r.e);
+}
+
+// Best guess plus whether the text is ambiguous enough that we should ask which lift is meant
+function resolveExercise(list, query) {
+  const ranked = rankExercises(list, query);
+  if (ranked.length === 0) return { best: null, ambiguous: false, candidates: [] };
+  const [top, second] = ranked;
+  const ambiguous = top.score < 100 && !!second && second.score >= top.score - 12;
+  return { best: top.e, ambiguous, candidates: ranked.slice(0, 4).map(r => r.e) };
 }
 
 async function findOrCreateExercise(pool, name, muscle = '') {
@@ -853,7 +883,7 @@ function register(app, pool) {
 
 module.exports = {
   migrate, register, norm, today, isDate, num, round1, epley, pad,
-  allExercises, matchExercises, findOrCreateExercise,
+  allExercises, matchExercises, rankExercises, resolveExercise, findOrCreateExercise,
   loadWorkouts, getOrCreateWorkout, addExerciseToWorkout, addSet,
   exerciseHistory, recentSessionsAll, summarizeSets, formatSets, exerciseStats, suggestNext,
   MEALS, MEAL_LABELS, scaleFood, logMeal, dayTotals, searchFoods, searchOpenFoodFacts, saveFood, targets, computeTargets

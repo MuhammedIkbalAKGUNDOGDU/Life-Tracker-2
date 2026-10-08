@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Plus, CheckSquare, StickyNote, FolderKanban, Target, Flame, Star } from 'lucide-react';
+import { Plus, CheckSquare, StickyNote, FolderKanban, Target, Flame, Star, NotebookPen } from 'lucide-react';
+import { api } from '../healthApi';
+import { notify } from '../ui';
 import ModalShell from './ModalShell';
 import NumInput from './NumInput';
 
@@ -41,6 +43,20 @@ export default function QuickAdd({
     if (ok) setMode(null);
   };
 
+  const submitTodo = async (e) => {
+    e.preventDefault();
+    if (!note.trim() || busy) return;
+    setBusy(true);
+    try {
+      await api('POST', '/api/notes', { text: note.trim() });
+      notify('Not eklendi.', 'success');
+      window.dispatchEvent(new Event('notes-changed'));
+      setMode(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitNote = async (e) => {
     e.preventDefault();
     if (!note.trim() || busy) return;
@@ -54,6 +70,7 @@ export default function QuickAdd({
 
   const items = [
     { label: 'Görev', icon: <CheckSquare size={16} />, run: () => start('task') },
+    { label: 'Not (yapılacak)', icon: <NotebookPen size={16} />, run: () => start('todo') },
     { label: 'Günlük notu', icon: <StickyNote size={16} />, run: () => start('note') },
     { label: 'Proje', icon: <FolderKanban size={16} />, run: () => { setMenuOpen(false); onNewProject(); } },
     { label: 'Hedef', icon: <Target size={16} />, run: () => { setMenuOpen(false); onNewGoal(); } },
@@ -120,6 +137,28 @@ export default function QuickAdd({
               <span className="modal-hint">Ctrl+Enter ekler</span>
               <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
               <button type="submit" className="btn btn-primary" disabled={busy || openProjects.length === 0}>Ekle</button>
+            </div>
+          </form>
+        </ModalShell>
+      )}
+
+      {mode === 'todo' && (
+        <ModalShell onClose={() => setMode(null)} style={{ maxWidth: '480px' }}>
+          <div className="modal-header">
+            <h2>Yeni Not</h2>
+            <button className="btn-close" data-modal-close type="button">×</button>
+          </div>
+          <form onSubmit={submitTodo} className="modal-form">
+            <div className="modal-body-split" style={{ flexDirection: 'column', gap: '14px', padding: '24px' }}>
+              <div className="form-group">
+                <label>Not (Notlar sayfasına eklenir, tamamlandı işaretleyebilirsin)</label>
+                <textarea rows="4" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ne hatırlamak istiyorsun?" required />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <span className="modal-hint">Ctrl+Enter ekler</span>
+              <button type="button" className="btn btn-secondary" data-modal-close>Vazgeç</button>
+              <button type="submit" className="btn btn-primary" disabled={busy}>Ekle</button>
             </div>
           </form>
         </ModalShell>

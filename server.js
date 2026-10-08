@@ -135,12 +135,14 @@ async function waitForDatabase() {
 }
 
 const health = require('./health');
+const notesModule = require('./notes');
 const dbReady = (async () => {
   await waitForDatabase();
   await pool.query(MIGRATION_SQL);
   console.log('✅ Database migration successful: yearly payments options, items, and structures verified.');
   await health.migrate(pool);
   console.log('✅ Health tables ready');
+  await notesModule.migrate(pool);
 })();
 // If the database never comes up or a migration fails, exit so Docker restarts and retries
 dbReady.catch(err => { console.error('❌ Startup failed:', err.message); process.exit(1); });
@@ -1728,6 +1730,7 @@ require('./extras')(app, pool);
 
 // Health: workouts + nutrition
 health.register(app, pool);
+notesModule.register(app, pool);
 
 // Send a test reminder right now (needs TELEGRAM_* env vars)
 app.post('/api/reminders/test', async (req, res) => {
@@ -1736,7 +1739,7 @@ app.post('/api/reminders/test', async (req, res) => {
     return res.status(400).json({ error: 'TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID tanımlı değil.' });
   }
   try {
-    const text = (await reminders.buildMessage(pool)) || 'Bugün için bekleyen ödeme yok. ✅';
+    const text = (await reminders.buildMessage(pool)) || 'No payments due today. ✅';
     await reminders.send(text);
     res.json({ ok: true });
   } catch (err) {

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Activity, Lock, User, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, KeyRound, Eye, EyeOff } from 'lucide-react';
+import Logo from './Logo';
 
 // mode 'login': username + password. mode 'setup': first visit, create the one and only account.
 export default function Login({ mode = 'login', onSuccess }) {
@@ -49,7 +50,7 @@ export default function Login({ mode = 'login', onSuccess }) {
   return (
     <div className="login-page">
       <form className="glass-card login-card" onSubmit={submit}>
-        <div className="brand-icon login-icon"><Activity /></div>
+        <Logo size={52} className="login-logo" />
         <h1>Softium Planner</h1>
         <p>{isSetup ? 'İlk kurulum: hesabınızı oluşturun. Bu uygulamada tek hesap olur.' : 'Devam etmek için giriş yapın.'}</p>
 

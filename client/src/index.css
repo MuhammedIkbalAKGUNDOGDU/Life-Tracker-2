@@ -3350,3 +3350,78 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .sidebar-tools > * { display: inline-flex; align-items: center; justify-content: center; height: 40px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(148,163,184,.08); color: var(--text-main); cursor: pointer; text-decoration: none; }
 .sidebar-tools > *:hover { background: rgba(148,163,184,.2); }
 .sidebar-footer .user-profile { min-width: 0; }
+
+/* ===== Notlar ===== */
+.notes-page { display: flex; flex-direction: column; gap: 16px; max-width: 760px; margin: 0 auto; width: 100%; }
+.notes-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.notes-actions .btn.off { opacity: .75; }
+.note-add { display: flex; gap: 10px; align-items: flex-end; padding: 12px; }
+.note-add textarea { flex: 1; min-width: 0; resize: none; padding: 11px 12px; border-radius: 12px; background: rgba(148,163,184,.1); border: 1px solid var(--glass-border); color: var(--text-main); font: inherit; font-size: 15px; line-height: 1.4; }
+.notes-card { padding: 6px 12px; display: flex; flex-direction: column; }
+.notes-sub { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-muted); padding: 10px 4px 4px; }
+.notes-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 12px; color: var(--text-muted); text-align: center; }
+.note-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--glass-border); }
+.note-row:last-child { border-bottom: none; }
+.note-check { width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--text-muted); background: transparent; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.note-check.checked { background: var(--success); border-color: var(--success); }
+.note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.note-text { font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-text a { color: var(--primary-hover); }
+.note-body small { color: var(--text-muted); font-size: 11.5px; }
+.note-row.done .note-text { text-decoration: line-through; color: var(--text-muted); }
+.note-edit { width: 100%; resize: none; padding: 8px 10px; border-radius: 10px; background: rgba(148,163,184,.1); border: 1px solid var(--primary); color: var(--text-main); font: inherit; font-size: 15px; }
+.note-add textarea { min-height: 48px; }
+
+/* =====================================================
+   SCROLL PERFORMANCE (phones / tablets)
+   What made scrolling stutter: a blur() on every card, three 500px blurred background
+   blobs with an endless animation, big shadows and endless pulsing glows. All of those
+   force the phone to repaint on every scroll frame. Same look, much cheaper.
+   ===================================================== */
+@media (max-width: 900px), (pointer: coarse) {
+  :root {
+    --backdrop-blur: none;
+    --glass-bg: rgba(18, 25, 46, 0.9);
+    --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  }
+  .light-theme { --glass-bg: rgba(255, 255, 255, 0.94); --glass-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+
+  /* no per-card blur; the cards are nearly opaque instead */
+  .glass-card, .sidebar, .toast, .modal, .modal-backdrop, .dialog-backdrop, .cp-backdrop, .health-tabs, .app-header {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .modal-backdrop, .dialog-backdrop, .cp-backdrop { background: rgba(0, 0, 0, 0.62); }
+  .health-tabs { background: var(--glass-bg); }
+  .sidebar { background: var(--bg-dark); }
+
+  /* background blobs: the radial gradient is enough, drop the 140px blur and the animation */
+  .glow-orb { filter: none !important; animation: none !important; opacity: 0.22; }
+
+  /* endless pulsing glows repaint every frame */
+  .pulse-priority, .pulse-overdue, .pulse-today, .goal-overdue-card, .goal-today-card,
+  .milestone-card.unlocked .milestone-badge-icon, .tab-placeholder-page svg {
+    animation: none !important;
+  }
+
+  /* no sticky hover transforms on touch, and no 300ms tap delay */
+  .glass-card:hover, .project-card:hover { transform: none; }
+  button, a, [role="button"], input, select, textarea, label { touch-action: manipulation; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body { transition: none; }
+
+  /* long lists only paint what is on screen */
+  .note-row, .recent-item, .meal-item, .rc-line, .home-row { content-visibility: auto; contain-intrinsic-size: auto 56px; }
+}
+
+/* anyone who asked their system for less motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Softium logo */
+.softium-logo { color: var(--text-main); flex-shrink: 0; }
+.brand .brand-logo { filter: none; }
+.login-logo { margin-bottom: 4px; }
+/* the brand title was a white-to-lilac gradient; on the light theme and next to the new mark use the plain text color */
+.brand h1 { background: none; -webkit-text-fill-color: currentColor; color: var(--text-main); }

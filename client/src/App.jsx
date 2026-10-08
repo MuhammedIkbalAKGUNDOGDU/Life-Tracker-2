@@ -14,13 +14,14 @@ import CalendarDashboard from './components/CalendarDashboard';
 import CommandPalette from './components/CommandPalette';
 import QuickAdd from './components/QuickAdd';
 import HealthDashboard from './components/HealthDashboard';
+import NotesDashboard from './components/NotesDashboard';
 import ModalShell from './components/ModalShell';
+import Logo from './components/Logo';
 import AccountModal from './components/AccountModal';
 import { buildReceivables, projectPayments } from './receivables';
 import { confirmDialog } from './ui';
 import JournalDashboard from './components/JournalDashboard';
 import { 
-  Activity, 
   Home,
   LogOut,
   FileText,
@@ -51,10 +52,11 @@ import {
   Download,
   HeartPulse,
   MoreHorizontal,
-  User
+  User,
+  StickyNote
 } from 'lucide-react';
 
-const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar', 'health'];
+const VALID_TABS = ['home', 'projects', 'goals', 'daily', 'journal', 'receivables', 'calendar', 'health', 'notes'];
 const LEGACY_TABS = { habits: 'daily', routines: 'daily', yearly_payments: 'receivables' };
 const NAV_TABS = [
   { id: 'home', label: 'Ana Sayfa', icon: <Home /> },
@@ -64,6 +66,7 @@ const NAV_TABS = [
   { id: 'receivables', label: 'Alacaklar', icon: <Wallet /> },
   { secondary: true, id: 'calendar', label: 'Takvim', icon: <CalendarDays /> },
   { id: 'health', label: 'Sağlık', icon: <HeartPulse /> },
+  { secondary: true, id: 'notes', label: 'Notlar', icon: <StickyNote /> },
   { secondary: true, id: 'journal', label: 'Günlük', icon: <BookOpen /> }
 ];
 const resolveTab = (hash) => {
@@ -1361,9 +1364,7 @@ export default function App({ onLogout, username }) {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="brand">
-            <div className="brand-icon">
-              <Activity />
-            </div>
+            <Logo size={34} className="brand-logo" />
             <h1>Softium Planner</h1>
           </div>
 
@@ -1769,6 +1770,8 @@ export default function App({ onLogout, username }) {
             onSaveEntry={saveJournalEntry}
             onDeleteEntry={deleteJournalEntry}
           />
+        ) : activeTab === 'notes' ? (
+          <NotesDashboard />
         ) : activeTab === 'health' ? (
           <HealthDashboard />
         ) : activeTab === 'calendar' ? (

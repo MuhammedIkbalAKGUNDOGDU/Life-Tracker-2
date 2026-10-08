@@ -16,9 +16,12 @@ import {
   CheckSquare,
   BarChart3,
   Eye,
-  EyeOff
+  EyeOff,
+  StickyNote
 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { dailyProgress, habitsToday } from '../daily';
+import { api } from '../healthApi';
 import { dueLabel, dueColor } from '../receivables';
 
 const greeting = () => {
@@ -46,6 +49,24 @@ export default function HomeDashboard({
   onToggleTask
 }) {
   const progress = dailyProgress(habits, routines);
+
+  // Notes card: the latest open notes, tick them off right here
+  const [noteList, setNoteList] = useState({ active: [], total: 0 });
+  const loadNotes = useCallback(async () => {
+    try {
+      const d = await api('GET', '/api/notes');
+      setNoteList({ active: d.active.slice(0, 5), total: d.active.length });
+    } catch { /* toast shown */ }
+  }, []);
+  useEffect(() => {
+    loadNotes();
+    window.addEventListener('notes-changed', loadNotes);
+    return () => window.removeEventListener('notes-changed', loadNotes);
+  }, [loadNotes]);
+  const completeNote = async (n) => {
+    await api('PUT', `/api/notes/${n.id}`, { is_done: true });
+    loadNotes();
+  };
   const { totals, reminders } = receivables;
 
   const fmt = (tryValue) => {
@@ -276,6 +297,23 @@ export default function HomeDashboard({
               </div>
             )}
           </section>
+
+          {noteList.total > 0 && (
+            <section className="glass-card home-card">
+              <div className="home-card-head">
+                <h3><StickyNote size={18} /> Notlar</h3>
+                <button className="home-link" onClick={() => onNavigate('notes')}>Tümü ({noteList.total}) <ArrowRight size={14} /></button>
+              </div>
+              <div className="home-todo">
+                {noteList.active.map(n => (
+                  <div key={n.id} className="home-todo-row">
+                    <button className="home-check" onClick={() => completeNote(n)} aria-label="Notu tamamla" />
+                    <span className="home-todo-title" style={{ whiteSpace: 'normal' }}>{n.text}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="glass-card home-card">
             <div className="home-card-head">

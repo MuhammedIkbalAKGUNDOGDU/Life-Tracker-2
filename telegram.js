@@ -2,13 +2,15 @@
 // Uses long polling (outbound only), so it needs no webhook, domain or open port.
 // Enabled when TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set. Only that chat is served.
 const H = require('./health');
+const N = require('./notes');
 
 const TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
 const CHAT = () => String(process.env.TELEGRAM_CHAT_ID || '');
 
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-const nf = (n, d = 1) => (Math.round((Number(n) || 0) * 10 ** d) / 10 ** d).toString().replace('.', ',');
-const trDate = (s) => new Date(`${s}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+const nf = (n, d = 1) => (Math.round((Number(n) || 0) * 10 ** d) / 10 ** d).toString();
+const trDate = (s) => new Date(`${s}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const MEAL_EN = { kahvalti: 'Breakfast', ogle: 'Lunch', aksam: 'Dinner', ara: 'Snack' };
 
 async function tg(method, payload = {}, signal) {
   const res = await fetch(`https://api.telegram.org/bot${TOKEN()}/${method}`, {
@@ -31,7 +33,7 @@ const edit = (message_id, text, extra = {}) =>
   tg('editMessageText', { chat_id: CHAT(), message_id, text, parse_mode: 'HTML', ...extra }).catch(() => {}); // "message is not modified" etc.
 
 const MAIN_KEYBOARD = {
-  keyboard: [[{ text: '🏋️ Antrenman' }, { text: '🍽 Yemek' }], [{ text: '📊 Bugün' }, { text: '⚖️ Kilo' }], [{ text: '↩️ Geri al' }]],
+  keyboard: [[{ text: '🏋️ Workout' }, { text: '🍽 Food' }], [{ text: '📝 Notes' }, { text: '📊 Today' }], [{ text: '⚖️ Weight' }, { text: '↩️ Undo' }]],
   resize_keyboard: true,
   is_persistent: true
 };
@@ -39,9 +41,9 @@ const MAIN_KEYBOARD = {
 const btn = (text, data) => ({ text, callback_data: data });
 
 // ---------- per-chat state (in memory; single user) ----------
-let state = { awaiting: null, flow: null, pending: null, food: null, last: null, expires: 0 };
+let state = { awaiting: null, flow: null, pending: null, food: null, pick: null, last: null, expires: 0 };
 const touch = () => { state.expires = Date.now() + 30 * 60 * 1000; };
-const resetState = () => { state = { awaiting: null, flow: null, pending: null, food: null, last: state.last, expires: 0 }; };
+const resetState = () => { state = { awaiting: null, flow: null, pending: null, food: null, pick: null, last: state.last, expires: 0 }; };
 
 // ---------- parsing ----------
 const num = (v) => parseFloat(String(v).replace(',', '.'));
@@ -66,8 +68,17 @@ function parseWorkoutText(text) {
   return items;
 }
 
-const UNITS = { g: 1, gr: 1, gram: 1, ml: 1, kg: 1000, adet: 'serving', porsiyon: 'serving', dilim: 'serving', tane: 'serving' };
-const MEAL_WORDS = { kahvalti: 'kahvalti', sabah: 'kahvalti', ogle: 'ogle', ogle_yemegi: 'ogle', aksam: 'aksam', ara: 'ara', atistirmalik: 'ara' };
+const UNITS = {
+  g: 1, gr: 1, gram: 1, grams: 1, ml: 1, kg: 1000,
+  adet: 'serving', porsiyon: 'serving', dilim: 'serving', tane: 'serving',
+  piece: 'serving', pieces: 'serving', pcs: 'serving', serving: 'serving', servings: 'serving', slice: 'serving', slices: 'serving'
+};
+const MEAL_WORDS = {
+  kahvalti: 'kahvalti', sabah: 'kahvalti', breakfast: 'kahvalti',
+  ogle: 'ogle', ogle_yemegi: 'ogle', lunch: 'ogle',
+  aksam: 'aksam', dinner: 'aksam', supper: 'aksam',
+  ara: 'ara', atistirmalik: 'ara', snack: 'ara'
+};
 
 // "kahvaltı: yumurta 3 adet, ekmek 60g" -> { meal, items: [{ name, qty, unit }] }
 function parseFoodText(text) {
@@ -80,7 +91,7 @@ function parseFoodText(text) {
   }
   const items = [];
   for (const part of body.split(/[,\n;]+/).map(p => p.trim()).filter(Boolean)) {
-    const unitRe = '(g|gr|gram|kg|ml|adet|porsiyon|dilim|tane)';
+    const unitRe = '(g|gr|gram|grams|kg|ml|adet|porsiyon|dilim|tane|piece|pieces|pcs|serving|servings|slice|slices)';
     let r = part.match(new RegExp(`^(.*?)\\s+(\\d+(?:[.,]\\d+)?)\\s*${unitRe}?$`, 'i'));
     if (r) { items.push({ name: r[1].trim(), qty: num(r[2]), unit: (r[3] || 'g').toLowerCase() }); continue; }
     r = part.match(new RegExp(`^(\\d+(?:[.,]\\d+)?)\\s*${unitRe}?\\s+(.+)$`, 'i'));
@@ -107,7 +118,7 @@ async function workoutSummary(pool, date) {
   if (!w || w.exercises.length === 0) return null;
   const lines = w.exercises.map(e => `• <b>${esc(e.name)}</b>: ${esc(H.formatSets(e.sets)) || '—'}`);
   const vol = Math.round(w.exercises.flatMap(e => e.sets).filter(s => !s.is_warmup).reduce((a, s) => a + s.weight * s.reps, 0));
-  return `🏋️ <b>${esc(w.title || 'Antrenman')}</b> (${trDate(date)})\n${lines.join('\n')}\nToplam hacim: ${vol.toLocaleString('tr-TR')} kg`;
+  return `🏋️ <b>${esc(w.title || 'Workout')}</b> (${trDate(date)})\n${lines.join('\n')}\nTotal volume: ${vol.toLocaleString('en-US')} kg`;
 }
 
 async function checkPR(pool, exercise, sets, beforeBest) {
@@ -124,44 +135,113 @@ async function todayAndTotals(pool) {
   const today = H.today();
   const t = await H.dayTotals(pool, today);
   const tg2 = await H.targets(pool);
-  let s = `🍽 <b>Beslenme</b>: ${nf(t.kcal, 0)}${tg2.kcal ? ` / ${nf(tg2.kcal, 0)}` : ''} kcal\nP ${nf(t.protein)} g · K ${nf(t.carbs)} g · Y ${nf(t.fat)} g`;
-  if (tg2.kcal) s += `\n${tg2.kcal - t.kcal >= 0 ? `Kalan: ${nf(tg2.kcal - t.kcal, 0)} kcal` : `Fazla: ${nf(t.kcal - tg2.kcal, 0)} kcal`}${tg2.protein ? ` · Kalan protein: ${nf(Math.max(0, tg2.protein - t.protein), 0)} g` : ''}`;
+  let s = `🍽 <b>Nutrition</b>: ${nf(t.kcal, 0)}${tg2.kcal ? ` / ${nf(tg2.kcal, 0)}` : ''} kcal\nProtein ${nf(t.protein)} g · Carbs ${nf(t.carbs)} g · Fat ${nf(t.fat)} g`;
+  if (tg2.kcal) s += `\n${tg2.kcal - t.kcal >= 0 ? `Left: ${nf(tg2.kcal - t.kcal, 0)} kcal` : `Over: ${nf(t.kcal - tg2.kcal, 0)} kcal`}${tg2.protein ? ` · Protein left: ${nf(Math.max(0, tg2.protein - t.protein), 0)} g` : ''}`;
   return s;
 }
 
-// ---------- commands ----------
-async function cmdHelp() {
-  await send(
-    '<b>Softium Planner botu</b>\n\n' +
-    '<b>Antrenman</b>\n' +
-    '• Yaz: <code>bench 80x8 80x8 75x10</code>\n' +
-    '• Aynı set çok kez: <code>squat 100x5x3</code> (3 set)\n' +
-    '• Birden fazla: <code>bench 80x8, squat 100x5x3</code>\n' +
-    '• Sadece hareketin adını yaz (<code>bench</code> / <code>bench 5</code>), son seferlerini göster\n' +
-    '• 🏋️ Antrenman: düğmelerle set gir\n\n' +
-    '<b>Yemek</b>\n' +
-    '• <code>kahvaltı: yumurta 3 adet, ekmek 60g</code>\n' +
-    '• <code>tavuk göğsü 200g, pilav 150g</code>\n\n' +
-    '<b>Diğer</b>\n' +
-    '• <code>kilo 82.4</code>\n• /bugun · /son · /kalan · /geri',
-    { reply_markup: MAIN_KEYBOARD }
-  );
+// ---------- help ----------
+const HELP = {
+  main: () => (
+    '<b>Softium Planner Bot</b>\n' +
+    'Log workouts, meals and notes in seconds.\n\n' +
+    '🏋️ <b>Workout</b> → /workout\n' +
+    '🍽 <b>Food</b> → /food\n' +
+    '📝 <b>Notes</b> → /notes\n' +
+    '⚖️ <b>Weight</b> → /weight 82.4\n' +
+    '📊 /today · ↩️ /undo · 🧹 /clear (wipe chat)\n\n' +
+    'Tap a section for details and examples 👇'
+  ),
+  workout: () => (
+    '🏋️ <b>Workout</b>\n\n' +
+    '<b>Type it</b>\n' +
+    '• <code>bench 80x8 80x8 75x10</code>\n' +
+    '• <code>squat 100x5x3</code> (3 sets of 100 kg × 5)\n' +
+    '• <code>bench 80x8, squat 100x5x3</code> (several lifts)\n' +
+    '• Just a lift name shows its last sessions: <code>bench</code> or <code>bench 5</code>\n\n' +
+    '<b>Or use buttons</b>\n' +
+    '/workout – pick a lift, adjust weight and reps, tap Save\n\n' +
+    '<b>Commands</b>\n' +
+    '/workout – log sets with buttons\n' +
+    '/history bench 5 – last 5 sessions of a lift\n' +
+    '/lastworkout – your most recent workout\n' +
+    '/undo – remove the last logged sets\n\n' +
+    'You get a 🎉 when you beat your best.'
+  ),
+  food: () => (
+    '🍽 <b>Food</b>\n\n' +
+    '<b>Type it</b>\n' +
+    '• <code>tavuk göğsü 200g, pilav 150g</code>\n' +
+    '• <code>breakfast: yumurta 3 adet, ekmek 60g</code>\n' +
+    'Meal word is optional (breakfast, lunch, dinner, snack); otherwise it follows the time of day.\n' +
+    'Units: g, kg, ml, or piece/serving/slice (uses the food\'s serving size).\n\n' +
+    'I search your saved foods first, then Open Food Facts, and ask you to confirm before saving.\n\n' +
+    '<b>Commands</b>\n' +
+    '/food – tell me what you ate\n' +
+    '/meals – today\'s meals\n' +
+    '/macros – calories and protein left today\n' +
+    '/undo – remove the last logged food'
+  ),
+  notes: () => (
+    '📝 <b>Notes</b>\n\n' +
+    '<b>Add</b>\n' +
+    '• <code>note: buy milk</code> or <code>/note buy milk</code>\n' +
+    '• <code>/note</code> alone → I ask for the text\n\n' +
+    '<b>Manage</b>\n' +
+    '/notes – your open notes; tap one to complete it\n' +
+    '/completed – also show completed notes\n' +
+    'Inside the list: ➕ add · 👁 show/hide completed · 🧹 clear completed\n\n' +
+    'The show/hide switch is shared with the web app.'
+  )
+};
+
+function helpKeyboard(current) {
+  const row = [['workout', '🏋️ Workout'], ['food', '🍽 Food'], ['notes', '📝 Notes']]
+    .filter(([k]) => k !== current)
+    .map(([k, label]) => btn(label, `help:${k}`));
+  if (current) row.push(btn('⬅️ Menu', 'help:main'));
+  return { inline_keyboard: [row] };
 }
 
+async function sendHelp(section = 'main') {
+  const key = HELP[section] ? section : 'main';
+  await send(HELP[key](), { reply_markup: helpKeyboard(key === 'main' ? null : key) });
+}
+
+async function cmdStart() {
+  await send('👋 Hi! I\'m ready. Use the buttons below or type a command.', { reply_markup: MAIN_KEYBOARD });
+  await sendHelp('main');
+}
+
+// ---------- commands ----------
 async function cmdToday(pool) {
   const w = await workoutSummary(pool, H.today());
   const bw = (await pool.query('SELECT weight FROM body_weights WHERE log_date = $1', [H.today()])).rows[0];
-  await send([w || '🏋️ Bugün antrenman kaydı yok.', await todayAndTotals(pool), bw ? `⚖️ Kilo: ${nf(bw.weight)} kg` : null].filter(Boolean).join('\n\n'));
+  const open = (await N.listNotes(pool)).active.length;
+  await send([w || '🏋️ No workout logged today.', await todayAndTotals(pool), bw ? `⚖️ Weight: ${nf(bw.weight)} kg` : null, `📝 ${open} open note${open === 1 ? '' : 's'}`].filter(Boolean).join('\n\n'));
 }
 
-async function cmdLast(pool) {
+async function cmdLastWorkout(pool) {
   const [w] = await H.loadWorkouts(pool, { limit: 1 });
-  if (!w) return send('Henüz antrenman kaydı yok.');
-  await send((await workoutSummary(pool, w.workout_date)) || 'Henüz antrenman kaydı yok.');
+  if (!w) return send('No workouts logged yet.');
+  await send((await workoutSummary(pool, w.workout_date)) || 'No workouts logged yet.');
 }
 
-async function cmdRemaining(pool) {
+async function cmdMacros(pool) {
   await send(await todayAndTotals(pool));
+}
+
+async function cmdMeals(pool) {
+  const { rows } = await pool.query('SELECT meal, food_name, grams, kcal FROM meal_logs WHERE log_date = $1 ORDER BY id', [H.today()]);
+  if (rows.length === 0) return send('🍽 Nothing logged today. Use /food.');
+  const parts = [];
+  for (const key of ['kahvalti', 'ogle', 'aksam', 'ara']) {
+    const items = rows.filter(r => r.meal === key);
+    if (!items.length) continue;
+    const kcal = items.reduce((a, r) => a + parseFloat(r.kcal), 0);
+    parts.push(`<b>${MEAL_EN[key]}</b> · ${nf(kcal, 0)} kcal\n${items.map(r => `• ${esc(r.food_name)} ${nf(parseFloat(r.grams), 0)} g`).join('\n')}`);
+  }
+  await send(`${parts.join('\n\n')}\n\n${await todayAndTotals(pool)}`);
 }
 
 async function cmdUndo(pool) {
@@ -169,43 +249,43 @@ async function cmdUndo(pool) {
   if (last?.type === 'sets' && last.ids.length) {
     await pool.query('DELETE FROM workout_sets WHERE id = ANY($1)', [last.ids]);
     state.last = null;
-    return send(`↩️ Son kaydedilen ${last.ids.length} set silindi.`);
+    return send(`↩️ Removed the last ${last.ids.length} logged set${last.ids.length === 1 ? '' : 's'}.`);
   }
   if (last?.type === 'meals' && last.ids.length) {
     await pool.query('DELETE FROM meal_logs WHERE id = ANY($1)', [last.ids]);
     state.last = null;
-    return send(`↩️ Son eklenen ${last.ids.length} yemek kaydı silindi.`);
+    return send(`↩️ Removed the last ${last.ids.length} logged food item${last.ids.length === 1 ? '' : 's'}.`);
   }
   // Nothing remembered (e.g. after a restart): remove whichever was created last
   const s = (await pool.query('SELECT id, created_at FROM workout_sets ORDER BY created_at DESC LIMIT 1')).rows[0];
   const m = (await pool.query('SELECT id, created_at FROM meal_logs ORDER BY created_at DESC LIMIT 1')).rows[0];
-  if (!s && !m) return send('Geri alınacak kayıt yok.');
-  if (s && (!m || s.created_at > m.created_at)) { await pool.query('DELETE FROM workout_sets WHERE id = $1', [s.id]); return send('↩️ Son set silindi.'); }
+  if (!s && !m) return send('Nothing to undo.');
+  if (s && (!m || s.created_at > m.created_at)) { await pool.query('DELETE FROM workout_sets WHERE id = $1', [s.id]); return send('↩️ Removed the last set.'); }
   await pool.query('DELETE FROM meal_logs WHERE id = $1', [m.id]);
-  return send('↩️ Son yemek kaydı silindi.');
+  return send('↩️ Removed the last food entry.');
 }
 
 async function saveBodyWeight(pool, w) {
-  if (!(w >= 20 && w <= 400)) return send('Kilo 20–400 arasında olmalı. Örnek: <code>kilo 82.4</code>');
+  if (!(w >= 20 && w <= 400)) return send('Weight must be between 20 and 400 kg. Example: <code>/weight 82.4</code>');
   await pool.query('INSERT INTO body_weights (log_date, weight) VALUES ($1, $2) ON CONFLICT (log_date) DO UPDATE SET weight = EXCLUDED.weight', [H.today(), w]);
   const prev = (await pool.query('SELECT weight FROM body_weights WHERE log_date < $1 ORDER BY log_date DESC LIMIT 1', [H.today()])).rows[0];
   const diff = prev ? w - parseFloat(prev.weight) : null;
-  await send(`⚖️ Kilo kaydedildi: <b>${nf(w)} kg</b>${diff !== null ? ` (${diff >= 0 ? '+' : ''}${nf(diff)} kg, önceki kayda göre)` : ''}`);
+  await send(`⚖️ Weight saved: <b>${nf(w)} kg</b>${diff !== null ? ` (${diff >= 0 ? '+' : ''}${nf(diff)} kg vs last entry)` : ''}`);
 }
 
 // ---------- workout flows ----------
 async function showExerciseHistory(pool, exercise, n = 3) {
   const hist = await H.exerciseHistory(pool, exercise.id, n);
   if (hist.length === 0) {
-    return send(`<b>${esc(exercise.name)}</b>\nHenüz kayıt yok.`, { reply_markup: { inline_keyboard: [[btn('➕ Bugüne ekle', `ex:add:${exercise.id}`)]] } });
+    return send(`<b>${esc(exercise.name)}</b>\nNo sessions yet.`, { reply_markup: { inline_keyboard: [[btn('➕ Add to today', `ex:add:${exercise.id}`)]] } });
   }
   const lines = hist.map(h => `<b>${trDate(h.date)}</b>: ${esc(H.formatSets(h.sets))}`);
   const stats = await H.exerciseStats(pool, exercise.id);
-  const pr = stats.prE1rm ? `\n🏆 En iyi: ${nf(stats.prWeight?.maxWeight)} kg (tahmini 1RM ${nf(stats.prE1rm.e1rm)} kg)` : '';
+  const pr = stats.prE1rm ? `\n🏆 Best: ${nf(stats.prWeight?.maxWeight)} kg (est. 1RM ${nf(stats.prE1rm.e1rm)} kg)` : '';
   const sug = H.suggestNext(hist[0].sets);
   await send(
-    `<b>${esc(exercise.name)}</b> — son ${hist.length} antrenman\n${lines.join('\n')}${pr}${sug ? `\n💡 Öneri: ${sug.weight} kg × ${sug.reps}` : ''}`,
-    { reply_markup: { inline_keyboard: [[btn('➕ Bugüne ekle', `ex:add:${exercise.id}`), btn('🔁 Geçen seferkini kopyala', `ex:copy:${exercise.id}`)]] } }
+    `<b>${esc(exercise.name)}</b> — last ${hist.length} session${hist.length === 1 ? '' : 's'}\n${lines.join('\n')}${pr}${sug ? `\n💡 Try next: ${sug.weight} kg × ${sug.reps}` : ''}`,
+    { reply_markup: { inline_keyboard: [[btn('➕ Add to today', `ex:add:${exercise.id}`), btn('🔁 Copy last session', `ex:copy:${exercise.id}`)]] } }
   );
 }
 
@@ -214,24 +294,24 @@ async function startWorkoutMenu(pool) {
   const top = list.slice(0, 8);
   const rows = [];
   for (let i = 0; i < top.length; i += 2) rows.push(top.slice(i, i + 2).map(e => btn(e.name, `ex:add:${e.id}`)));
-  rows.push([btn('✏️ Başka hareket', 'ex:other')]);
+  rows.push([btn('✏️ Other lift', 'ex:other')]);
   const summary = await workoutSummary(pool, H.today());
-  await send(`${summary ? `${summary}\n\n` : ''}Hangi hareket?`, { reply_markup: { inline_keyboard: rows } });
+  await send(`${summary ? `${summary}\n\n` : ''}Which lift?`, { reply_markup: { inline_keyboard: rows } });
 }
 
 function flowText(f, daySets) {
-  return `🏋️ <b>${esc(f.exercise.name)}</b>\nAğırlık: <b>${nf(f.weight)} kg</b>  ·  Tekrar: <b>${f.reps}</b>${f.warm ? '  ·  🔥 ısınma' : ''}` +
-    `${daySets.length ? `\n\nBugün: ${esc(H.formatSets(daySets))}` : ''}`;
+  return `🏋️ <b>${esc(f.exercise.name)}</b>\nWeight: <b>${nf(f.weight)} kg</b>  ·  Reps: <b>${f.reps}</b>${f.warm ? '  ·  🔥 warm-up' : ''}` +
+    `${daySets.length ? `\n\nToday: ${esc(H.formatSets(daySets))}` : ''}`;
 }
 
 function flowKeyboard(f) {
   return {
     inline_keyboard: [
       [btn('−5', 'w:-5'), btn('−2.5', 'w:-2.5'), btn('+2.5', 'w:2.5'), btn('+5', 'w:5')],
-      [btn('✏️ Ağırlık yaz', 'w:type'), btn('✏️ Tekrar yaz', 'r:type')],
+      [btn('✏️ Type weight', 'w:type'), btn('✏️ Type reps', 'r:type')],
       [btn('−1', 'r:-1'), btn('6', 'r:=6'), btn('8', 'r:=8'), btn('10', 'r:=10'), btn('12', 'r:=12'), btn('+1', 'r:1')],
-      [btn(f.warm ? '🔥 Isınma: açık' : '🔥 Isınma', 'warm'), btn('✅ Seti kaydet', 'set:save')],
-      [btn('🏁 Hareketi bitir', 'flow:end')]
+      [btn(f.warm ? '🔥 Warm-up: on' : '🔥 Warm-up', 'warm'), btn('✅ Save set', 'set:save')],
+      [btn('🏁 Finish lift', 'flow:end')]
     ]
   };
 }
@@ -250,7 +330,7 @@ async function openFlow(pool, exercise) {
   state.awaiting = null;
   touch();
   const m = await send(
-    `${flowText(flow, flow.daySets)}${hist[0] ? `\n\nGeçen sefer (${trDate(hist[0].date)}): ${esc(H.formatSets(hist[0].sets))}` : ''}`,
+    `${flowText(flow, flow.daySets)}${hist[0] ? `\n\nLast time (${trDate(hist[0].date)}): ${esc(H.formatSets(hist[0].sets))}` : ''}`,
     { reply_markup: flowKeyboard(flow) }
   );
   flow.messageId = m.message_id;
@@ -264,7 +344,7 @@ async function refreshFlow() {
 
 async function saveSetFromFlow(pool) {
   const f = state.flow;
-  if (!f) return send('Önce bir hareket seç: /antrenman');
+  if (!f) return send('Pick a lift first: /workout');
   const before = await bestE1rm(pool, f.exercise.id, H.today());
   const set = await H.addSet(pool, f.weId, { weight: f.weight, reps: f.reps, is_warmup: f.warm });
   f.setIds.push(set.id);
@@ -273,21 +353,30 @@ async function saveSetFromFlow(pool) {
   f.daySets = w.exercises.find(e => e.id === f.weId)?.sets || [];
   await refreshFlow();
   const pr = f.warm ? 0 : await checkPR(pool, f.exercise, [{ weight: f.weight, reps: f.reps }], before);
-  if (pr) await send(`🎉 <b>Yeni rekor!</b> ${esc(f.exercise.name)}: tahmini 1RM ${nf(pr)} kg`);
+  if (pr) await send(`🎉 <b>New record!</b> ${esc(f.exercise.name)}: est. 1RM ${nf(pr)} kg`);
   f.warm = false;
 }
 
-// Parsed text workout -> confirmation card
-async function proposeWorkout(pool, items) {
+// Parsed text workout -> confirmation card. Lift names that could mean several lifts ("press") ask first.
+async function proposeWorkout(pool, items, idx = 0, resolved = []) {
   const list = await H.allExercises(pool);
-  const resolved = items.map(it => {
-    const match = H.matchExercises(list, it.name)[0];
-    return { exercise: match || null, name: match ? match.name : it.name.replace(/\b\w/g, c => c.toUpperCase()), sets: it.sets };
-  });
+  for (let i = idx; i < items.length; i++) {
+    const it = items[i];
+    const r = H.resolveExercise(list, it.name);
+    if (r.ambiguous) {
+      state.pick = { kind: 'log', items, idx: i, resolved, candidates: r.candidates, name: it.name };
+      touch();
+      const rows = r.candidates.map(e => [btn(e.name, `lx:${e.id}`)]);
+      rows.push([btn(`➕ New lift “${clip(it.name, 24)}”`, 'lx:new')]);
+      return send(`Which lift is “<b>${esc(it.name)}</b>”?`, { reply_markup: { inline_keyboard: rows } });
+    }
+    resolved.push({ exercise: r.best, name: r.best ? r.best.name : it.name.replace(/\b\w/g, c => c.toUpperCase()), sets: it.sets });
+  }
   state.pending = { type: 'workout', items: resolved };
+  state.pick = null;
   touch();
-  const lines = resolved.map(r => `• <b>${esc(r.name)}</b>${r.exercise ? '' : ' <i>(yeni hareket)</i>'}: ${esc(H.formatSets(r.sets.map(s => ({ ...s, is_warmup: false }))))}`);
-  await send(`🏋️ Bugünün antrenmanına eklenecek:\n${lines.join('\n')}`, { reply_markup: { inline_keyboard: [[btn('✅ Kaydet', 'pending:ok'), btn('❌ İptal', 'pending:cancel')]] } });
+  const lines = resolved.map(r => `• <b>${esc(r.name)}</b>${r.exercise ? '' : ' <i>(new lift)</i>'}: ${esc(H.formatSets(r.sets.map(s => ({ ...s, is_warmup: false }))))}`);
+  await send(`🏋️ Add to today's workout?\n${lines.join('\n')}`, { reply_markup: { inline_keyboard: [[btn('✅ Save', 'pending:ok'), btn('❌ Cancel', 'pending:cancel')]] } });
 }
 
 async function commitWorkout(pool, pending) {
@@ -300,10 +389,10 @@ async function commitWorkout(pool, pending) {
     const weId = await H.addExerciseToWorkout(pool, workoutId, exercise.id);
     for (const s of r.sets) ids.push((await H.addSet(pool, weId, s)).id);
     const pr = await checkPR(pool, exercise, r.sets, before);
-    if (pr) notes.push(`🎉 ${esc(exercise.name)}: yeni rekor (tahmini 1RM ${nf(pr)} kg)`);
+    if (pr) notes.push(`🎉 ${esc(exercise.name)}: new record (est. 1RM ${nf(pr)} kg)`);
   }
   state.last = { type: 'sets', ids };
-  await send(`✅ ${ids.length} set kaydedildi.${notes.length ? `\n${notes.join('\n')}` : ''}`);
+  await send(`✅ ${ids.length} set${ids.length === 1 ? '' : 's'} saved.${notes.length ? `\n${notes.join('\n')}` : ''}`);
 }
 
 // ---------- food flow ----------
@@ -339,8 +428,8 @@ async function processFood(pool) {
     }
     f.candidates = candidates;
     const rows = candidates.map((c, idx) => [btn(`${c.name}${c.brand ? ` (${c.brand})` : ''} · ${nf(c.kcal, 0)} kcal`, `fd:${idx}`)]);
-    rows.push([btn('⏭ Atla', 'fd:skip')]);
-    await send(`“<b>${esc(item.name)}</b>” için hangisi?${note}${item.qty === null ? '\n(Gramaj yazmadın, seçince sorarım.)' : ''}`, { reply_markup: { inline_keyboard: rows } });
+    rows.push([btn('⏭ Skip', 'fd:skip')]);
+    await send(`Which one is “<b>${esc(item.name)}</b>”?${note}${item.qty === null ? '\n(No amount given, I\'ll ask after you pick.)' : ''}`, { reply_markup: { inline_keyboard: rows } });
     return;
   }
   await finishFood(pool);
@@ -350,7 +439,7 @@ async function finishFood(pool) {
   const f = state.food;
   if (f.resolved.length === 0) {
     state.food = null;
-    return send(`Kaydedilecek yemek bulunamadı.${f.skipped.length ? ` Bulunamayan: ${esc(f.skipped.join(', '))}. Uygulamadan elle ekleyebilirsin (Sağlık > Beslenme > Yeni).` : ''}`);
+    return send(`Nothing to save.${f.skipped.length ? ` Not found: ${esc(f.skipped.join(', '))}. You can add it in the app (Health > Nutrition > New).` : ''}`);
   }
   let kcal = 0, p = 0, c = 0, fat = 0;
   const lines = f.resolved.map(r => {
@@ -360,8 +449,8 @@ async function finishFood(pool) {
   });
   state.pending = { type: 'food' };
   await send(
-    `🍽 <b>${esc(H.MEAL_LABELS[f.meal])}</b> için:\n${lines.join('\n')}\n\nToplam: <b>${nf(kcal, 0)} kcal</b> · P ${nf(p)} · K ${nf(c)} · Y ${nf(fat)}${f.skipped.length ? `\n⚠️ Bulunamadı: ${esc(f.skipped.join(', '))}` : ''}`,
-    { reply_markup: { inline_keyboard: [[btn('✅ Kaydet', 'pending:ok'), btn('❌ İptal', 'pending:cancel')], ['kahvalti', 'ogle', 'aksam', 'ara'].map(k => btn(f.meal === k ? `• ${H.MEAL_LABELS[k]}` : H.MEAL_LABELS[k], `meal:${k}`))] } }
+    `🍽 <b>${MEAL_EN[f.meal]}</b>:\n${lines.join('\n')}\n\nTotal: <b>${nf(kcal, 0)} kcal</b> · P ${nf(p)} · C ${nf(c)} · F ${nf(fat)}${f.skipped.length ? `\n⚠️ Not found: ${esc(f.skipped.join(', '))}` : ''}`,
+    { reply_markup: { inline_keyboard: [[btn('✅ Save', 'pending:ok'), btn('❌ Cancel', 'pending:cancel')], ['kahvalti', 'ogle', 'aksam', 'ara'].map(k => btn(f.meal === k ? `• ${MEAL_EN[k]}` : MEAL_EN[k], `meal:${k}`))] } }
   );
 }
 
@@ -371,43 +460,191 @@ async function commitFood(pool) {
   for (const r of f.resolved) ids.push((await H.logMeal(pool, { date: H.today(), meal: f.meal, food: r.food, grams: r.grams })).id);
   state.last = { type: 'meals', ids };
   state.food = null;
-  await send(`✅ ${ids.length} yemek kaydedildi.\n\n${await todayAndTotals(pool)}`);
+  await send(`✅ ${ids.length} food item${ids.length === 1 ? '' : 's'} saved.\n\n${await todayAndTotals(pool)}`);
+}
+
+// ---------- notes ----------
+const clip = (t, n = 38) => {
+  const one = String(t).replace(/\s+/g, ' ').trim();
+  return one.length > n ? `${one.slice(0, n - 1)}…` : one;
+};
+
+// The notes list as one message: tap a note to tick it off. The "show completed" switch is shared with the web app.
+async function notesView(pool, forceCompleted = false) {
+  const { active, completed } = await N.listNotes(pool);
+  const showCompleted = forceCompleted || (await N.getShowCompleted(pool));
+  const shownActive = active.slice(0, 15);
+  let text = `📝 <b>Notes</b> · ${active.length} open`;
+  if (active.length === 0) text += '\n\nNo open notes 🎉';
+  else text += '\n\nTap a note to complete it:';
+  if (active.length > shownActive.length) text += `\n(… and ${active.length - shownActive.length} more in the app)`;
+
+  const rows = shownActive.map(n => [btn(`⬜ ${clip(n.text)}`, `nt:done:${n.id}`)]);
+
+  if (showCompleted && completed.length) {
+    const shownDone = completed.slice(0, 8);
+    text += `\n\n✅ <b>Completed</b> (${completed.length})\nTap to reopen:`;
+    for (const n of shownDone) rows.push([btn(`✔️ ${clip(n.text)}`, `nt:undo:${n.id}`)]);
+    if (completed.length > shownDone.length) text += `\n(… and ${completed.length - shownDone.length} more completed)`;
+  } else if (!showCompleted && completed.length) {
+    text += `\n\n<i>${completed.length} completed note${completed.length === 1 ? '' : 's'} hidden.</i>`;
+  }
+
+  const showFlag = await N.getShowCompleted(pool);
+  rows.push([btn('➕ Add note', 'nt:add'), btn(showFlag ? '👁 Hide completed' : '👁 Show completed', 'nt:toggle')]);
+  if (showFlag && completed.length) rows.push([btn('🧹 Clear completed', 'nt:clear')]);
+  return { text, extra: { reply_markup: { inline_keyboard: rows } } };
+}
+
+async function sendNotes(pool, forceCompleted = false) {
+  const v = await notesView(pool, forceCompleted);
+  await send(v.text, v.extra);
+}
+
+async function refreshNotes(pool, messageId) {
+  const v = await notesView(pool);
+  await edit(messageId, v.text, v.extra);
+}
+
+async function addNoteFromText(pool, text) {
+  try {
+    const note = await N.addNote(pool, text);
+    await send(`📝 Note added:\n<i>${esc(clip(note.text, 200))}</i>`, {
+      reply_markup: { inline_keyboard: [[btn('✅ Done', `nt:done1:${note.id}`), btn('📝 My notes', 'nt:list')]] }
+    });
+  } catch (err) {
+    await send(`⚠️ ${esc(err.message)}`);
+  }
+}
+
+function askHistoryLift(name, candidates, n) {
+  state.pick = { kind: 'history', n, candidates };
+  touch();
+  return send(`Which lift do you mean by “<b>${esc(name)}</b>”?`, {
+    reply_markup: { inline_keyboard: candidates.map(e => [btn(e.name, `lx:${e.id}`)]) }
+  });
+}
+
+// ---------- clear chat ----------
+// Telegram has no "clear history" call for bots, but message ids in a private chat are sequential:
+// delete the ids below the newest one in batches of 100 (ids that don't exist or are too old are skipped).
+async function clearChat(upToId) {
+  const floor = Math.max(1, upToId - 2000);
+  for (let hi = upToId; hi >= floor; hi -= 100) {
+    const ids = [];
+    for (let id = hi; id > Math.max(floor - 1, hi - 100); id--) ids.push(id);
+    try {
+      await tg('deleteMessages', { chat_id: CHAT(), message_ids: ids });
+    } catch { /* a batch can fail when every message in it is already gone */ }
+  }
 }
 
 // ---------- dispatch ----------
+// Canonical English commands (Turkish names keep working as aliases)
+const COMMANDS = {
+  start: 'start', help: 'help', yardim: 'help',
+  today: 'today', bugun: 'today',
+  undo: 'undo', geri: 'undo',
+  workout: 'workout', antrenman: 'workout',
+  lastworkout: 'lastworkout', last: 'lastworkout', son: 'lastworkout',
+  history: 'history', gecmis: 'history',
+  food: 'food', yemek: 'food',
+  meals: 'meals', ogunler: 'meals',
+  macros: 'macros', kalan: 'macros',
+  weight: 'weight', kilo: 'weight',
+  note: 'note', not: 'note',
+  notes: 'notes', notlar: 'notes',
+  completed: 'completed', tamamlananlar: 'completed',
+  clear: 'clear', temizle: 'clear'
+};
+
+// Reply-keyboard buttons (English + the old Turkish labels)
+const BUTTONS = {
+  '🏋️ Workout': 'workout', '🏋️ Antrenman': 'workout',
+  '🍽 Food': 'food', '🍽 Yemek': 'food',
+  '📝 Notes': 'notes', '📝 Notlar': 'notes',
+  '📊 Today': 'today', '📊 Bugün': 'today',
+  '⚖️ Weight': 'weight', '⚖️ Kilo': 'weight',
+  '↩️ Undo': 'undo', '↩️ Geri al': 'undo'
+};
+
+async function runCommand(pool, cmd, arg) {
+  switch (cmd) {
+    case 'start': return cmdStart();
+    case 'help': return sendHelp(H.norm(arg).split(' ')[0] || 'main');
+    case 'today': return cmdToday(pool);
+    case 'undo': return cmdUndo(pool);
+    case 'workout': return startWorkoutMenu(pool);
+    case 'lastworkout': return cmdLastWorkout(pool);
+    case 'history': {
+      const m = arg.trim().match(/^(.+?)(?:\s+(\d{1,2}))?$/);
+      if (!m) return send('Which lift? Example: <code>/history bench 5</code>');
+      const n = Math.min(parseInt(m[2]) || 3, 10);
+      const r = H.resolveExercise(await H.allExercises(pool), m[1]);
+      if (!r.best) return send(`I don't know a lift called “${esc(m[1])}”. Log it once (for example <code>${esc(m[1])} 60x8</code>) and it will be saved.`);
+      if (r.ambiguous) return askHistoryLift(m[1], r.candidates, n);
+      return showExerciseHistory(pool, r.best, n);
+    }
+    case 'food':
+      if (arg.trim()) {
+        const parsed = parseFoodText(arg);
+        if (parsed.items.length) return startFood(pool, parsed);
+      }
+      state.awaiting = 'food';
+      touch();
+      return send('What did you eat? Example:\n<code>tavuk göğsü 200g, pilav 150g</code>\n<code>breakfast: yumurta 3 adet, ekmek 60g</code>');
+    case 'meals': return cmdMeals(pool);
+    case 'macros': return cmdMacros(pool);
+    case 'weight': {
+      const m = arg.match(/(\d{2,3}(?:[.,]\d+)?)/);
+      if (m) return saveBodyWeight(pool, num(m[1]));
+      state.awaiting = 'bodyweight';
+      touch();
+      return send('What\'s your weight today? Example: <code>82.4</code>');
+    }
+    case 'note':
+      if (arg.trim()) return addNoteFromText(pool, arg);
+      state.awaiting = 'note';
+      touch();
+      return send('Type your note:');
+    case 'notes': return sendNotes(pool);
+    case 'completed': return sendNotes(pool, true);
+    case 'clear':
+      return send('🧹 Clear this chat?\nI\'ll delete the messages from the last 48 hours (Telegram doesn\'t allow deleting older ones). Your workouts, meals and notes stay untouched.', {
+        reply_markup: { inline_keyboard: [[btn('🧹 Yes, clear', 'chat:clear'), btn('Cancel', 'chat:cancel')]] }
+      });
+    default: return null;
+  }
+}
+
 async function handleText(pool, textRaw) {
   const text = textRaw.trim();
-  const lower = H.norm(text);
 
-  // Button / command shortcuts
-  if (/^\/(start|yardim|help)\b/.test(text)) return cmdHelp();
-  if (/^\/bugun\b/.test(text) || lower === 'bugun' || text === '📊 Bugün') return cmdToday(pool);
-  if (/^\/son\b/.test(text)) return cmdLast(pool);
-  if (/^\/kalan\b/.test(text)) return cmdRemaining(pool);
-  if (/^\/geri\b/.test(text) || text === '↩️ Geri al') return cmdUndo(pool);
-  if (/^\/antrenman\b/.test(text) || text === '🏋️ Antrenman') return startWorkoutMenu(pool);
-  if (/^\/yemek\b/.test(text) || text === '🍽 Yemek') {
-    state.awaiting = 'food';
-    touch();
-    return send('Ne yedin? Örnek:\n<code>kahvaltı: yumurta 3 adet, ekmek 60g</code>\n<code>tavuk göğsü 200g, pilav 150g</code>');
+  // Slash commands: /workout, /history bench 5, /note buy milk, /yardım ...
+  const slash = text.match(/^\/([A-Za-zçğıöşüÇĞİÖŞÜ_]+)(?:@\w+)?(?:\s+([\s\S]*))?$/);
+  if (slash) {
+    const cmd = COMMANDS[H.norm(slash[1])];
+    if (cmd) return runCommand(pool, cmd, slash[2] || '');
+    return send(`Unknown command /${esc(slash[1])}. Try /help`);
   }
-  const kiloCmd = text.match(/^(?:\/kilo|kilo|⚖️ Kilo)\s*:?\s*(\d{2,3}(?:[.,]\d+)?)?\s*(?:kg)?$/i);
-  if (kiloCmd) {
-    if (kiloCmd[1]) return saveBodyWeight(pool, num(kiloCmd[1]));
-    state.awaiting = 'bodyweight';
-    touch();
-    return send('Kaç kilosun? Örnek: <code>82.4</code>');
-  }
-  const kiloAfter = text.match(/^(\d{2,3}(?:[.,]\d+)?)\s*(?:kg|kilo)$/i);
-  if (kiloAfter) return saveBodyWeight(pool, num(kiloAfter[1]));
+  if (BUTTONS[text]) return runCommand(pool, BUTTONS[text], '');
 
-  // Waiting for a typed number
+  // Plain-text shortcuts: "note: buy milk", "weight 82.4"
+  const noteAdd = text.match(/^(?:note|not)(?:\s*[:\-–]\s*|\s+)([\s\S]+)$/i);
+  if (noteAdd && noteAdd[1].trim()) return addNoteFromText(pool, noteAdd[1]);
+  if (/^(?:note|not)$/i.test(text)) return runCommand(pool, 'note', '');
+  if (/^(?:notes|notlar)$/i.test(text)) return sendNotes(pool);
+  const weightText = text.match(/^(?:weight|kilo)\s*:?\s*(\d{2,3}(?:[.,]\d+)?)\s*(?:kg)?$/i) || text.match(/^(\d{2,3}(?:[.,]\d+)?)\s*(?:kg|kilo)$/i);
+  if (weightText) return saveBodyWeight(pool, num(weightText[1]));
+
+  // Waiting for a typed answer
   if (state.awaiting && Date.now() < state.expires) {
     const a = state.awaiting;
+    if (a === 'note') { state.awaiting = null; return addNoteFromText(pool, text); }
     if (a === 'bodyweight') { state.awaiting = null; return saveBodyWeight(pool, num(text)); }
     if ((a === 'weight' || a === 'reps') && state.flow) {
       const v = num(text);
-      if (!(v >= 0)) return send('Bir sayı yaz.');
+      if (!(v >= 0)) return send('Please type a number.');
       if (a === 'weight') state.flow.weight = v; else state.flow.reps = Math.round(v);
       state.awaiting = null;
       return refreshFlow();
@@ -420,7 +657,7 @@ async function handleText(pool, textRaw) {
     if (a === 'grams' && state.food) {
       const v = num(text);
       state.awaiting = null;
-      if (!(v > 0)) return send('Gramajı sayı olarak yaz.');
+      if (!(v > 0)) return send('Please type the amount in grams.');
       const f = state.food;
       f.resolved.push({ food: f.chosen, grams: v });
       f.i += 1;
@@ -441,9 +678,13 @@ async function handleText(pool, textRaw) {
   const hq = text.match(/^(.+?)(?:\s+(\d{1,2}))?$/);
   if (hq && !/\d/.test(hq[1])) {
     const list = await H.allExercises(pool);
-    const match = H.matchExercises(list, hq[1])[0];
-    if (match && (H.norm(match.name) === H.norm(hq[1]) || (match.aliases || []).some(a => H.norm(a) === H.norm(hq[1])) || H.norm(match.name).startsWith(H.norm(hq[1])))) {
-      return showExerciseHistory(pool, match, Math.min(parseInt(hq[2]) || 3, 10));
+    const r = H.resolveExercise(list, hq[1]);
+    const nq = H.norm(hq[1]);
+    // only treat plain text as a history request when it clearly names a lift
+    if (r.best && (H.norm(r.best.name) === nq || (r.best.aliases || []).some(a => H.norm(a) === nq) || H.norm(r.best.name).startsWith(nq))) {
+      const n = Math.min(parseInt(hq[2]) || 3, 10);
+      if (r.ambiguous) return askHistoryLift(hq[1], r.candidates, n);
+      return showExerciseHistory(pool, r.best, n);
     }
   }
 
@@ -451,7 +692,7 @@ async function handleText(pool, textRaw) {
   const food = parseFoodText(text);
   if (food.items.length && (food.meal || /\d/.test(text))) return startFood(pool, food);
 
-  return send('Anlayamadım 🤔\nÖrnek: <code>bench 80x8 80x8</code>, <code>yumurta 3 adet</code>, <code>kilo 82.4</code>\nYardım: /yardim');
+  return send('I didn\'t get that 🤔\nTry <code>bench 80x8 80x8</code>, <code>yumurta 3 adet</code>, <code>note: buy milk</code> or <code>/weight 82.4</code>.\nAll commands: /help');
 }
 
 async function handleCallback(pool, cb) {
@@ -460,8 +701,74 @@ async function handleCallback(pool, cb) {
   const answer = (text) => tg('answerCallbackQuery', { callback_query_id: cb.id, text }).catch(() => {});
 
   if (state.expires && Date.now() > state.expires && (data.startsWith('w:') || data.startsWith('r:') || data.startsWith('set:'))) {
-    await answer('Süre doldu, tekrar başlat: /antrenman');
+    await answer('Session expired. Start again: /workout');
     return;
+  }
+
+  if (data.startsWith('lx:')) {
+    await answer();
+    const pick = state.pick;
+    if (!pick) return send('That choice expired. Please type it again.');
+    state.pick = null;
+    if (pick.kind === 'history') {
+      const ex = pick.candidates.find(e => e.id === parseInt(data.slice(3)));
+      return ex ? showExerciseHistory(pool, ex, pick.n) : null;
+    }
+    if (pick.kind === 'log') {
+      const it = pick.items[pick.idx];
+      const ex = data === 'lx:new' ? null : pick.candidates.find(e => e.id === parseInt(data.slice(3)));
+      pick.resolved.push({ exercise: ex, name: ex ? ex.name : it.name.replace(/\b\w/g, c => c.toUpperCase()), sets: it.sets });
+      return proposeWorkout(pool, pick.items, pick.idx + 1, pick.resolved);
+    }
+    return null;
+  }
+
+  if (data === 'chat:cancel') {
+    await answer('Cancelled');
+    return edit(msgId, 'Cancelled. Nothing was deleted.');
+  }
+  if (data === 'chat:clear') {
+    await answer('Clearing…');
+    await clearChat(msgId);
+    return send('🧹 Chat cleared. Your data is untouched.\nType /help to see what I can do.', { reply_markup: MAIN_KEYBOARD });
+  }
+
+  if (data.startsWith('help:')) {
+    await answer();
+    const section = HELP[data.slice(5)] ? data.slice(5) : 'main';
+    return edit(msgId, HELP[section](), { reply_markup: helpKeyboard(section === 'main' ? null : section) });
+  }
+
+  if (data.startsWith('nt:')) {
+    await answer();
+    if (data === 'nt:list') return sendNotes(pool);
+    if (data === 'nt:add') {
+      state.awaiting = 'note';
+      touch();
+      return send('Type your note:');
+    }
+    if (data === 'nt:toggle') {
+      await N.setShowCompleted(pool, !(await N.getShowCompleted(pool)));
+      return refreshNotes(pool, msgId);
+    }
+    if (data === 'nt:clear') {
+      return edit(msgId, '🧹 Permanently delete all completed notes?', {
+        reply_markup: { inline_keyboard: [[btn('Yes, delete', 'nt:clear:yes'), btn('Cancel', 'nt:cancel')]] }
+      });
+    }
+    if (data === 'nt:clear:yes') {
+      const n = await N.clearCompleted(pool);
+      await send(`🧹 ${n} completed note${n === 1 ? '' : 's'} deleted.`);
+      return refreshNotes(pool, msgId);
+    }
+    if (data === 'nt:cancel') return refreshNotes(pool, msgId);
+    if (data.startsWith('nt:done1:')) {
+      const note = await N.setDone(pool, parseInt(data.slice(9)), true);
+      return edit(msgId, `✅ Done:\n<s>${esc(clip(note ? note.text : '', 200))}</s>`);
+    }
+    if (data.startsWith('nt:done:')) { await N.setDone(pool, parseInt(data.slice(8)), true); return refreshNotes(pool, msgId); }
+    if (data.startsWith('nt:undo:')) { await N.setDone(pool, parseInt(data.slice(8)), false); return refreshNotes(pool, msgId); }
+    return null;
   }
 
   if (data.startsWith('ex:add:')) {
@@ -474,7 +781,7 @@ async function handleCallback(pool, cb) {
     await answer();
     state.awaiting = 'exname';
     touch();
-    return send('Hareketin adını yaz (örn. <code>incline press</code>):');
+    return send('Type the lift name (e.g. <code>incline press</code>):');
   }
   if (data.startsWith('ex:copy:')) {
     await answer();
@@ -483,44 +790,44 @@ async function handleCallback(pool, cb) {
     const ex = list.find(e => e.id === id);
     const hist = await H.exerciseHistory(pool, id, 2);
     const src = hist.find(h => h.date !== H.today()) || hist[0];
-    if (!ex || !src) return send('Kopyalanacak kayıt yok.');
+    if (!ex || !src) return send('Nothing to copy yet.');
     state.pending = { type: 'workout', items: [{ exercise: ex, name: ex.name, sets: src.sets.map(s => ({ weight: s.weight, reps: s.reps })) }] };
     touch();
-    return send(`🔁 Geçen seferki (${trDate(src.date)}) setler bugüne eklenecek:\n• <b>${esc(ex.name)}</b>: ${esc(H.formatSets(src.sets))}`, { reply_markup: { inline_keyboard: [[btn('✅ Kaydet', 'pending:ok'), btn('❌ İptal', 'pending:cancel')]] } });
+    return send(`🔁 Add last session (${trDate(src.date)}) to today?\n• <b>${esc(ex.name)}</b>: ${esc(H.formatSets(src.sets))}`, { reply_markup: { inline_keyboard: [[btn('✅ Save', 'pending:ok'), btn('❌ Cancel', 'pending:cancel')]] } });
   }
 
   if (data.startsWith('w:') || data.startsWith('r:') || data === 'warm' || data === 'set:save' || data === 'flow:end') {
-    if (!state.flow) { await answer('Önce hareket seç: /antrenman'); return; }
+    if (!state.flow) { await answer('Pick a lift first: /workout'); return; }
     const f = state.flow;
     touch();
-    if (data === 'w:type') { await answer(); state.awaiting = 'weight'; return send('Ağırlığı yaz (kg):'); }
-    if (data === 'r:type') { await answer(); state.awaiting = 'reps'; return send('Tekrar sayısını yaz:'); }
+    if (data === 'w:type') { await answer(); state.awaiting = 'weight'; return send('Type the weight (kg):'); }
+    if (data === 'r:type') { await answer(); state.awaiting = 'reps'; return send('Type the number of reps:'); }
     if (data.startsWith('w:')) { f.weight = Math.max(0, Math.round((f.weight + num(data.slice(2))) * 100) / 100); await answer(); return refreshFlow(); }
     if (data.startsWith('r:=')) { f.reps = parseInt(data.slice(3)); await answer(); return refreshFlow(); }
     if (data.startsWith('r:')) { f.reps = Math.max(0, f.reps + parseInt(data.slice(2))); await answer(); return refreshFlow(); }
     if (data === 'warm') { f.warm = !f.warm; await answer(); return refreshFlow(); }
-    if (data === 'set:save') { await answer('Kaydedildi ✅'); return saveSetFromFlow(pool); }
+    if (data === 'set:save') { await answer('Saved ✅'); return saveSetFromFlow(pool); }
     if (data === 'flow:end') {
       await answer();
       const summary = await workoutSummary(pool, H.today());
       state.flow = null;
-      await send(`${summary || 'Kayıt yok.'}\n\nBaşka hareket eklemek için /antrenman`);
+      await send(`${summary || 'Nothing logged.'}\n\nAdd another lift: /workout`);
       return;
     }
   }
 
   if (data === 'pending:cancel') {
-    await answer('İptal edildi');
+    await answer('Cancelled');
     state.pending = null; state.food = null;
-    return edit(msgId, '❌ İptal edildi.');
+    return edit(msgId, '❌ Cancelled.');
   }
   if (data === 'pending:ok') {
-    await answer('Kaydediliyor…');
+    await answer('Saving…');
     const p = state.pending;
     state.pending = null;
-    if (p?.type === 'workout') { await edit(msgId, '✅ Kaydediliyor…'); return commitWorkout(pool, p); }
-    if (p?.type === 'food' && state.food) { await edit(msgId, '✅ Kaydediliyor…'); return commitFood(pool); }
-    return send('Bekleyen kayıt yok.');
+    if (p?.type === 'workout') { await edit(msgId, '✅ Saving…'); return commitWorkout(pool, p); }
+    if (p?.type === 'food' && state.food) { await edit(msgId, '✅ Saving…'); return commitFood(pool); }
+    return send('Nothing pending.');
   }
   if (data.startsWith('meal:') && state.food) {
     await answer();
@@ -544,7 +851,7 @@ async function handleCallback(pool, cb) {
       f.chosen = chosen;
       state.awaiting = 'grams';
       touch();
-      return send(`<b>${esc(chosen.name)}</b> kaç gram?`);
+      return send(`How many grams of <b>${esc(chosen.name)}</b>?`);
     }
     f.resolved.push({ food: chosen, grams });
     f.i += 1;
@@ -568,7 +875,7 @@ function start(pool) {
           if (state.expires && Date.now() > state.expires && state.awaiting) resetState();
           await handleText(pool, update.message.text);
         } else if (update.message.photo || update.message.voice) {
-          await send('Şimdilik sadece yazıyı anlıyorum. Örnek: <code>bench 80x8 80x8</code> veya <code>yumurta 3 adet</code>');
+          await send('I only understand text for now. Try <code>bench 80x8 80x8</code> or <code>yumurta 3 adet</code>. All commands: /help');
         }
       } else if (update.callback_query) {
         if (String(update.callback_query.message?.chat.id) !== CHAT()) return;
@@ -576,7 +883,7 @@ function start(pool) {
       }
     } catch (err) {
       console.error('Telegram handler error:', err.message);
-      send('⚠️ Bir hata oldu, tekrar dene.').catch(() => {});
+      send('⚠️ Something went wrong, please try again.').catch(() => {});
     }
   };
 
@@ -584,14 +891,23 @@ function start(pool) {
     try { await tg('deleteWebhook', { drop_pending_updates: false }); } catch { /* ignore */ }
     try {
       await tg('setMyCommands', { commands: [
-        { command: 'antrenman', description: 'Set gir (düğmelerle)' },
-        { command: 'yemek', description: 'Yemek ekle' },
-        { command: 'bugun', description: 'Bugünün özeti' },
-        { command: 'kalan', description: 'Kalan kalori / protein' },
-        { command: 'son', description: 'Son antrenman' },
-        { command: 'geri', description: 'Son kaydı sil' },
-        { command: 'yardim', description: 'Yardım' }
+        { command: 'workout', description: 'Log sets with buttons' },
+        { command: 'history', description: 'Last sessions of a lift, e.g. /history bench 5' },
+        { command: 'lastworkout', description: 'Your most recent workout' },
+        { command: 'food', description: 'Log what you ate' },
+        { command: 'meals', description: "Today's meals" },
+        { command: 'macros', description: 'Calories and protein left today' },
+        { command: 'weight', description: 'Log body weight, e.g. /weight 82.4' },
+        { command: 'note', description: 'Add a note, e.g. /note buy milk' },
+        { command: 'notes', description: 'Your notes (tap to complete)' },
+        { command: 'completed', description: 'Show completed notes too' },
+        { command: 'today', description: "Today's summary" },
+        { command: 'undo', description: 'Remove the last log' },
+        { command: 'clear', description: 'Clear the chat history' },
+        { command: 'help', description: 'Help and examples' }
       ] });
+      await tg('setMyShortDescription', { short_description: 'Log workouts, meals and notes for Softium Planner.' });
+      await tg('setMyDescription', { description: 'Softium Planner assistant.\n\nLog workouts (bench 80x8 80x8), meals (tavuk 200g) and notes (note: buy milk) in seconds, and get payment reminders.\n\nType /help to start.' });
     } catch { /* ignore */ }
     for (;;) {
       try {
