@@ -52,7 +52,7 @@ function SvgLineChart({ data = [], width = 600, height = 220 }) {
         <defs>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#a78bfa" />
-            <stop offset="100%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#F28A4E" />
           </linearGradient>
           <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.2" />
@@ -115,7 +115,7 @@ function SvgLineChart({ data = [], width = 600, height = 220 }) {
               cx={pt.x} 
               cy={pt.y} 
               r="5" 
-              fill="#60a5fa" 
+              fill="#F28A4E" 
               stroke="#0f172a" 
               strokeWidth="2" 
             >
@@ -193,8 +193,8 @@ function SvgBarChart({ data = [], width = 600, height = 220 }) {
       <svg width={width} height={height} style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
         <defs>
           <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" />
-            <stop offset="100%" stopColor="#6366f1" />
+            <stop offset="0%" stopColor="#F28A4E" />
+            <stop offset="100%" stopColor="#E8601C" />
           </linearGradient>
         </defs>
 

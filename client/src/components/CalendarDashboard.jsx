@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Wallet, CheckSquare, Target, Repeat } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Wallet, CheckSquare, Target, Repeat, StickyNote } from 'lucide-react';
 import { MONTH_NAMES } from '../receivables';
+import { api } from '../healthApi';
 
 const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const keyOf = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -14,10 +15,15 @@ const toDay = (value) => {
 };
 
 // One calendar for everything dated: payments due, task deadlines, goal target dates
-export default function CalendarDashboard({ receivables, projects, goals, onOpenProject, onOpenGoal, fmt }) {
+export default function CalendarDashboard({ receivables, projects, goals, onOpenProject, onOpenGoal, onOpenNotes, fmt }) {
   const now = new Date();
   const [cursor, setCursor] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
   const [selected, setSelected] = useState(keyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate())));
+
+  const [notes, setNotes] = useState([]);
+  useEffect(() => {
+    api('GET', '/api/notes').then(d => setNotes([...d.active, ...d.completed].filter(n => n.note_date))).catch(() => {});
+  }, []);
 
   const events = useMemo(() => {
     const map = new Map();
@@ -51,8 +57,15 @@ export default function CalendarDashboard({ receivables, projects, goals, onOpen
       if (g.is_completed || !g.target_date) return;
       push(toDay(g.target_date), { kind: 'goal', title: g.title, sub: 'Hedef tarihi', icon: <Target size={12} />, open: () => onOpenGoal(g) });
     });
+    notes.forEach(n => {
+      const [y, m, d] = n.note_date.split('-').map(Number);
+      push(new Date(y, m - 1, d), {
+        kind: 'note', title: n.text.split('\n')[0].slice(0, 80), sub: n.is_done ? 'Not · tamamlandı' : 'Not',
+        icon: <StickyNote size={12} />, open: () => onOpenNotes && onOpenNotes()
+      });
+    });
     return map;
-  }, [receivables, projects, goals, fmt, onOpenProject, onOpenGoal]);
+  }, [receivables, projects, goals, notes, fmt, onOpenProject, onOpenGoal, onOpenNotes]);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -122,6 +135,7 @@ export default function CalendarDashboard({ receivables, projects, goals, onOpen
             <span><i className="dot payment" /> Ödeme</span>
             <span><i className="dot task" /> Görev</span>
             <span><i className="dot goal" /> Hedef</span>
+            <span><i className="dot note" /> Not</span>
             <span><i className="dot payment overdue" /> Geciken</span>
           </div>
         </section>

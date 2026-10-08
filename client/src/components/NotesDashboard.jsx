@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Eye, EyeOff, Trash2, Pencil, Check, X, Search, StickyNote, Eraser } from 'lucide-react';
+import { CalendarDays, Plus, Eye, EyeOff, Trash2, Pencil, Check, X, Search, StickyNote, Eraser } from 'lucide-react';
 import { api } from '../healthApi';
 import { confirmDialog, notify } from '../ui';
+
+const dayLabel = (str) => {
+  const [y, m, d] = str.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const diff = Math.round((date - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  const base = date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' });
+  return diff === 0 ? `Bugün · ${base}` : diff === 1 ? `Yarın · ${base}` : diff === -1 ? `Dün · ${base}` : base;
+};
 
 const whenText = (iso) => {
   if (!iso) return '';
@@ -25,6 +33,7 @@ export default function NotesDashboard() {
   const [data, setData] = useState({ active: [], completed: [], showCompleted: true });
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
+  const [draftDate, setDraftDate] = useState('');
   const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
@@ -41,7 +50,8 @@ export default function NotesDashboard() {
     if (!text) return;
     setDraft('');
     try {
-      await api('POST', '/api/notes', { text });
+      await api('POST', '/api/notes', { text, note_date: draftDate || null });
+      setDraftDate('');
       await load();
     } catch {
       setDraft(text);
@@ -51,6 +61,11 @@ export default function NotesDashboard() {
 
   const toggleDone = async (note) => {
     await api('PUT', `/api/notes/${note.id}`, { is_done: !note.is_done });
+    load();
+  };
+
+  const setNoteDate = async (note, value) => {
+    await api('PUT', `/api/notes/${note.id}`, { note_date: value || null });
     load();
   };
 
@@ -68,7 +83,7 @@ export default function NotesDashboard() {
     notify('Not silindi.', 'info', {
       label: 'Geri al',
       onClick: async () => {
-        const restored = await api('POST', '/api/notes', { text: note.text });
+        const restored = await api('POST', '/api/notes', { text: note.text, note_date: note.note_date });
         if (note.is_done) await api('PUT', `/api/notes/${restored.id}`, { is_done: true });
         load();
       }
@@ -117,6 +132,12 @@ export default function NotesDashboard() {
             <Linkified text={note.text} />
           </div>
         )}
+        <label className={`note-date ${note.note_date ? 'set' : ''}`} title="Takvimde göstermek için gün seç">
+          <CalendarDays size={13} />
+          <span>{note.note_date ? dayLabel(note.note_date) : 'Gün ekle'}</span>
+          <input type="date" value={note.note_date || ''} onChange={(e) => setNoteDate(note, e.target.value)} aria-label="Not günü" />
+          {note.note_date && <button type="button" className="note-date-x" onClick={(e) => { e.preventDefault(); setNoteDate(note, null); }} aria-label="Günü kaldır">×</button>}
+        </label>
         <small>{note.is_done ? `tamamlandı · ${whenText(note.done_at)}` : whenText(note.created_at)}</small>
       </div>
       {!note.is_done && editingId !== note.id && (
@@ -158,6 +179,12 @@ export default function NotesDashboard() {
           placeholder="Yeni not yaz… (Enter ekler, Shift+Enter yeni satır)"
           aria-label="Yeni not"
         />
+        <label className={`note-date ${draftDate ? 'set' : ''}`} title="İstersen takvimde görünmesi için gün seç">
+          <CalendarDays size={15} />
+          <span>{draftDate ? dayLabel(draftDate) : 'Gün'}</span>
+          <input type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)} aria-label="Not günü" />
+          {draftDate && <button type="button" className="note-date-x" onClick={(e) => { e.preventDefault(); setDraftDate(''); }} aria-label="Günü kaldır">×</button>}
+        </label>
         <button type="submit" className="btn btn-primary" disabled={!draft.trim()}><Plus size={18} /> Ekle</button>
       </form>
 

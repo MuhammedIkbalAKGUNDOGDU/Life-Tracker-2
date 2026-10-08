@@ -10,6 +10,7 @@ async function migrate(pool) {
       done_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS note_date DATE;
     CREATE INDEX IF NOT EXISTS idx_notes_done ON notes(is_done);
   `);
 }
@@ -17,14 +18,20 @@ async function migrate(pool) {
 const clean = (text) => String(text || '').replace(/\r/g, '').trim().slice(0, 2000);
 
 async function listNotes(pool) {
-  const { rows } = await pool.query('SELECT id, text, is_done, done_at, created_at FROM notes ORDER BY is_done, CASE WHEN is_done THEN done_at END DESC, created_at DESC, id DESC');
+  const { rows } = await pool.query('SELECT id, text, is_done, done_at, created_at, note_date FROM notes ORDER BY is_done, CASE WHEN is_done THEN done_at END DESC, created_at DESC, id DESC');
   return { active: rows.filter(n => !n.is_done), completed: rows.filter(n => n.is_done) };
 }
 
-async function addNote(pool, text) {
+const cleanDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null);
+
+async function addNote(pool, text, date) {
   const t = clean(text);
   if (!t) throw Object.assign(new Error('Not boş olamaz.'), { status: 400 });
-  return (await pool.query('INSERT INTO notes (text) VALUES ($1) RETURNING *', [t])).rows[0];
+  return (await pool.query('INSERT INTO notes (text, note_date) VALUES ($1, $2) RETURNING *', [t, cleanDate(date)])).rows[0];
+}
+
+async function setDate(pool, id, date) {
+  return (await pool.query('UPDATE notes SET note_date = $1 WHERE id = $2 RETURNING *', [cleanDate(date), id])).rows[0] || null;
 }
 
 async function setDone(pool, id, done) {
@@ -78,10 +85,11 @@ function register(app, pool) {
     const { active, completed } = await listNotes(pool);
     res.json({ active, completed, showCompleted: await getShowCompleted(pool) });
   }));
-  app.post('/api/notes', wrap(async (req, res) => res.status(201).json(await addNote(pool, req.body.text))));
+  app.post('/api/notes', wrap(async (req, res) => res.status(201).json(await addNote(pool, req.body.text, req.body.note_date))));
   app.put('/api/notes/:id', wrap(async (req, res) => {
     let note = null;
     if (req.body.text !== undefined) note = await updateText(pool, req.params.id, req.body.text);
+    if (req.body.note_date !== undefined) note = await setDate(pool, req.params.id, req.body.note_date);
     if (req.body.is_done !== undefined) note = await setDone(pool, req.params.id, req.body.is_done);
     if (!note) throw Object.assign(new Error('Not bulunamadı.'), { status: 404 });
     res.json(note);

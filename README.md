@@ -122,6 +122,7 @@ Aşağıdaki "Telegram ödeme hatırlatması" bölümündeki gibi bir bot oluşt
 | | `breakfast: yumurta 3 adet, ekmek 60g` | Öğün adı isteğe bağlı (breakfast, lunch, dinner, snack) |
 | | `/food`, `/meals`, `/macros` | Yemek gir, bugünkü öğünler, kalan kalori/protein |
 | 📝 Notlar | `note: buy milk` veya `/note buy milk` | Not ekler |
+| | `note: 15.10.2026 bankayı ara` / `note: bankayı ara 15.10.2026` | Günlü not (gün.ay.yıl, başta veya sonda); takvimde görünür |
 | | `/notes` | Açık notlar; üstüne dokununca tamamlanır. ➕ Add · 👁 Show/Hide completed · 🧹 Clear completed |
 | | `/completed` | Tamamlananları da gösterir |
 | ⚖️ Kilo | `/weight 82.4` | Vücut kilosunu kaydeder |

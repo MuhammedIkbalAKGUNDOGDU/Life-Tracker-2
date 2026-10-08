@@ -45,7 +45,7 @@ export function LineChart({ series, height = 180, unit = '' }) {
 }
 
 // Simple bar chart. bars: [{ label, value }]
-export function BarChart({ bars, height = 120, color = '#6366f1' }) {
+export function BarChart({ bars, height = 120, color = '#E8601C' }) {
   if (bars.length === 0) return <div className="chart-empty">Henüz veri yok</div>;
   const max = Math.max(...bars.map(b => b.value), 1);
   return (

@@ -425,11 +425,11 @@ function ProgressPanel({ exercises, onOpenWorkout }) {
           <LineChart
             unit=" kg"
             series={[
-              { label: 'Tahmini 1RM', color: '#6366f1', points: last.map(p => ({ x: shortDate(p.date), y: p.e1rm })) },
+              { label: 'Tahmini 1RM', color: '#E8601C', points: last.map(p => ({ x: shortDate(p.date), y: p.e1rm })) },
               { label: 'En ağır set', color: '#10b981', points: last.map(p => ({ x: shortDate(p.date), y: p.maxWeight })) }
             ]}
           />
-          <div className="legend"><span><i style={{ background: '#6366f1' }} /> Tahmini 1RM</span><span><i style={{ background: '#10b981' }} /> En ağır set</span></div>
+          <div className="legend"><span><i style={{ background: '#E8601C' }} /> Tahmini 1RM</span><span><i style={{ background: '#10b981' }} /> En ağır set</span></div>
           <h4 className="sub-h">Antrenman hacmi (kg)</h4>
           <BarChart bars={last.map(p => ({ label: shortDate(p.date), value: p.volume }))} />
           <h4 className="sub-h">Son seanslar</h4>

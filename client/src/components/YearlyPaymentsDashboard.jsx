@@ -314,7 +314,7 @@ export default function YearlyPaymentsDashboard({
     if (diffDays < 0) return { label: 'Gecikmiş', color: '#ef4444' };
     if (diffDays === 0) return { label: 'Bugün', color: '#f97316' };
     if (diffDays <= 7) return { label: '1 Hafta İçinde', color: '#eab308' };
-    if (diffDays <= 30) return { label: '1 Ay İçinde', color: '#3b82f6' };
+    if (diffDays <= 30) return { label: '1 Ay İçinde', color: '#E8601C' };
     return { label: 'Normal', color: 'var(--success)' };
   };
 
@@ -479,11 +479,11 @@ export default function YearlyPaymentsDashboard({
         >
           <div className="stat-header">
             <span className="stat-title">Toplam Yıllık Alacak ({displayCurrency})</span>
-            <div className="stat-icon-wrapper blue" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
+            <div className="stat-icon-wrapper blue" style={{ background: 'rgba(232, 96, 28, 0.15)', color: '#F28A4E' }}>
               <BarChart2 size={20} />
             </div>
           </div>
-          <div className="stat-value" style={{ fontSize: '26px', color: '#60a5fa' }}>{fmt(totalReceivable)}</div>
+          <div className="stat-value" style={{ fontSize: '26px', color: '#F28A4E' }}>{fmt(totalReceivable)}</div>
           <div className="stat-desc" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
             Aktif (iptal edilmemiş) tüm kalemlerin toplamı. Grafik için tıklayın.
           </div>
@@ -823,9 +823,9 @@ export default function YearlyPaymentsDashboard({
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px',
-                          background: 'rgba(99,102,241,0.08)',
-                          border: '1px solid rgba(99,102,241,0.2)',
-                          color: '#a5b4fc'
+                          background: 'rgba(232, 96, 28,0.08)',
+                          border: '1px solid rgba(232, 96, 28,0.2)',
+                          color: '#F5A06A'
                         }}
                         onClick={(e) => {
                           e.stopPropagation();

@@ -886,7 +886,7 @@ export default function ProjectModal({
                   e.preventDefault();
                   onTransferToYearly(project);
                 }}
-                style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#3b82f6', color: '#60a5fa' }}
+                style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#E8601C', color: '#F28A4E' }}
               >
                 <CalendarCheck size={16} /> Yıllık Ödemelere Aktar
               </button>

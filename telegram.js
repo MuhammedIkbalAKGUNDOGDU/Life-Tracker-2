@@ -229,6 +229,11 @@ const HELP = {
     '<b>Add</b>\n' +
     '• <code>note: buy milk</code> or <code>/note buy milk</code>\n' +
     '• <code>/note</code> alone → I ask for the text\n\n' +
+    '<b>With a day</b> (day.month.year, shows in the app calendar)\n' +
+    '• <code>note: 15.10.2026 call the bank</code>\n' +
+    '• <code>note: call the bank 15.10.2026</code>\n' +
+    '• <code>/note 15/10/2026 call the bank</code>\n' +
+    'The date can be at the start or the end of the note; <code>.</code> <code>/</code> <code>-</code> all work.\n\n'+
     '<b>Manage</b>\n' +
     '/notes – your open notes; tap one to complete it\n' +
     '/completed – also show completed notes\n' +
@@ -548,10 +553,31 @@ async function refreshNotes(pool, messageId) {
   await edit(messageId, v.text, v.extra);
 }
 
-async function addNoteFromText(pool, text) {
+// "15.10.2026 buy milk" or "buy milk 15.10.2026" (day.month.year; / and - work too) -> { text, date: 'YYYY-MM-DD' }
+function splitNoteDate(input) {
+  const D = '(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4}|\\d{2})';
+  const m = input.match(new RegExp(`^\\s*${D}(?=\\s|[:,-]|$)[\\s:,-]*`)) || input.match(new RegExp(`[\\s:,-]*(?<![\\d./-])${D}\\s*$`));
+  if (!m) return { text: input, date: null };
+  const day = parseInt(m[1]), month = parseInt(m[2]);
+  let year = parseInt(m[3]);
+  if (year < 100) year += 2000;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return { text: input, date: null };
+  const rest = input.replace(m[0], ' ').replace(/\s+/g, ' ').trim();
+  if (!rest) return { text: input, date: null };
+  return { text: rest, date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
+
+const dateEn = (str) => {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
+async function addNoteFromText(pool, input) {
   try {
-    const note = await N.addNote(pool, text);
-    await send(`📝 Note added:\n<i>${esc(clip(note.text, 200))}</i>`, {
+    const { text, date } = splitNoteDate(input);
+    const note = await N.addNote(pool, text, date);
+    await send(`📝 Note added:\n<i>${esc(clip(note.text, 200))}</i>${date ? `\n📅 ${dateEn(date)} (shown in the calendar)` : ''}`, {
       reply_markup: { inline_keyboard: [[btn('✅ Done', `nt:done1:${note.id}`), btn('📝 My notes', 'nt:list')]] }
     });
   } catch (err) {
@@ -975,4 +1001,4 @@ function start(pool) {
   })();
 }
 
-module.exports = { start, parseWorkoutText, parseFoodText, _test: { handleText, handleCallback, parseFreeWorkout } };
+module.exports = { start, parseWorkoutText, parseFoodText, _test: { handleText, handleCallback, parseFreeWorkout, splitNoteDate } };

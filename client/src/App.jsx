@@ -1781,6 +1781,7 @@ export default function App({ onLogout, username }) {
             goals={goals}
             onOpenProject={handleOpenProjectById}
             onOpenGoal={handleEditGoalClick}
+            onOpenNotes={() => setActiveTab('notes')}
             fmt={fmtMoney}
           />
         ) : activeTab === 'receivables' ? (

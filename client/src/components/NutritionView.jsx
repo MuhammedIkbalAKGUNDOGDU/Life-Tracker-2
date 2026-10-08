@@ -357,7 +357,7 @@ export default function NutritionView() {
           ) : (
             <button type="button" className="chip-btn" onClick={() => setSettingsOpen(true)}>Günlük hedef belirle</button>
           )}
-          <MacroBar label="Protein" value={t.protein} target={tg.protein} color="#6366f1" />
+          <MacroBar label="Protein" value={t.protein} target={tg.protein} color="#E8601C" />
           <MacroBar label="Karbonhidrat" value={t.carbs} target={tg.carbs} color="#f59e0b" />
           <MacroBar label="Yağ" value={t.fat} target={tg.fat} color="#10b981" />
           <small className="muted">Lif {fmtNum(t.fiber)} g · Şeker {fmtNum(t.sugar)} g · Tuz {fmtNum(t.salt, 2)} g</small>
